@@ -1,0 +1,74 @@
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: arenajovem-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-admin}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-arena_jovem}
+      MYSQL_USER: ${MYSQL_APP_USER:-arena_app}
+      MYSQL_PASSWORD: ${MYSQL_APP_PASSWORD:-arena_app_pass}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./backend/src/database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-p${MYSQL_ROOT_PASSWORD:-admin}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: arenajovem-backend
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      PORT: 3333
+      NODE_ENV: production
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_USER: ${MYSQL_APP_USER:-arena_app}
+      DB_PASSWORD: ${MYSQL_APP_PASSWORD:-arena_app_pass}
+      DB_NAME: ${MYSQL_DATABASE:-arena_jovem}
+      JWT_SECRET: ${JWT_SECRET:-troque-esta-chave}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
+      CURSOR_SECRET: ${CURSOR_SECRET:-troque-esta-chave-de-cursor}
+      CURSOR_TTL_SECONDS: ${CURSOR_TTL_SECONDS:-3600}
+      AUTH_BYPASS_PASSWORD: "false"
+      AUTH_LOGIN_RATE_LIMIT_WINDOW_MS: ${AUTH_LOGIN_RATE_LIMIT_WINDOW_MS:-600000}
+      AUTH_LOGIN_RATE_LIMIT_MAX: ${AUTH_LOGIN_RATE_LIMIT_MAX:-20}
+      DEFAULT_ADMIN_NAME: ${DEFAULT_ADMIN_NAME:-Administrador Arena Jovem}
+      DEFAULT_ADMIN_EMAIL: ${DEFAULT_ADMIN_EMAIL:-admin@arenajovem.com}
+      DEFAULT_ADMIN_PASSWORD: ${DEFAULT_ADMIN_PASSWORD:-admin123}
+      DEFAULT_TEST_NAME: ${DEFAULT_TEST_NAME:-Usuario Teste}
+      DEFAULT_TEST_EMAIL: ${DEFAULT_TEST_EMAIL:-teste@arenajovem.com}
+      DEFAULT_TEST_PASSWORD: ${DEFAULT_TEST_PASSWORD:-teste}
+    ports:
+      - "${BACKEND_PORT:-3333}:3333"
+    volumes:
+      - backend_uploads:/app/src/uploads
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3333/api}
+        VITE_API_URL_BASE: ${VITE_API_URL_BASE:-http://localhost:3333}
+    container_name: arenajovem-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-8080}:80"
+
+volumes:
+  mysql_data:
+  backend_uploads:

@@ -1,0 +1,168 @@
+CREATE DATABASE IF NOT EXISTS arena_jovem;
+USE arena_jovem;
+
+CREATE TABLE IF NOT EXISTS equipes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nome VARCHAR(80) NOT NULL UNIQUE,
+  cor VARCHAR(20) NOT NULL,
+  escudo_url VARCHAR(255),
+  foto_url VARCHAR(255),
+  descricao TEXT,
+  alimentos_arrecadados INT DEFAULT 0,
+  pontuacao INT DEFAULT 0,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS usuarios (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nome VARCHAR(120) NOT NULL,
+  email VARCHAR(120) NOT NULL UNIQUE,
+  telefone VARCHAR(20),
+  google_sub VARCHAR(64) UNIQUE,
+  senha_hash VARCHAR(255) NOT NULL,
+  role ENUM('ADMIN', 'PARTICIPANTE') NOT NULL DEFAULT 'PARTICIPANTE',
+  foto VARCHAR(255),
+  equipe_id INT,
+  acessos JSON,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS participantes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  usuario_id INT NOT NULL UNIQUE,
+  equipe_id INT NOT NULL,
+  quantidade_missoes INT DEFAULT 0,
+  quantidade_fotos INT DEFAULT 0,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+  FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS missoes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  titulo VARCHAR(120) NOT NULL,
+  descricao TEXT NOT NULL,
+  imagem_capa VARCHAR(255),
+  pontuacao INT NOT NULL,
+  data_inicio DATETIME NOT NULL,
+  data_fim DATETIME NOT NULL,
+  status ENUM('ABERTA', 'ENCERRADA', 'EM_ANALISE') DEFAULT 'EM_ANALISE',
+  liberada_por INT,
+  liberada_em TIMESTAMP NULL,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (liberada_por) REFERENCES usuarios(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS envios_missao (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  missao_id INT NOT NULL,
+  usuario_id INT NOT NULL,
+  equipe_id INT NOT NULL,
+  imagem_url VARCHAR(255) NOT NULL,
+  legenda VARCHAR(280),
+  status ENUM('EM_ANALISE', 'APROVADA', 'RECUSADA') DEFAULT 'EM_ANALISE',
+  observacao_admin TEXT,
+  pontuacao_creditada TINYINT(1) DEFAULT 0,
+  aprovado_por INT,
+  revisado_em TIMESTAMP NULL,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (missao_id) REFERENCES missoes(id) ON DELETE CASCADE,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+  FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
+  FOREIGN KEY (aprovado_por) REFERENCES usuarios(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS publicacoes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  autor_id INT NOT NULL,
+  equipe_id INT NOT NULL,
+  imagem_url VARCHAR(255) NOT NULL,
+  texto TEXT,
+  tipo_publicacao ENUM('LIVRE', 'MISSAO_CONCLUIDA') DEFAULT 'LIVRE',
+  missao_id INT NULL,
+  possui_selo_missao TINYINT(1) DEFAULT 0,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (autor_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+  FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
+  FOREIGN KEY (missao_id) REFERENCES missoes(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS comentarios (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  publicacao_id INT NOT NULL,
+  usuario_id INT NOT NULL,
+  texto VARCHAR(300) NOT NULL,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (publicacao_id) REFERENCES publicacoes(id) ON DELETE CASCADE,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS curtidas (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  publicacao_id INT NOT NULL,
+  usuario_id INT NOT NULL,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_like (publicacao_id, usuario_id),
+  FOREIGN KEY (publicacao_id) REFERENCES publicacoes(id) ON DELETE CASCADE,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS pontuacoes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  equipe_id INT NOT NULL,
+  pontos INT NOT NULL,
+  tipo ENUM('ADICAO', 'REMOCAO') NOT NULL,
+  motivo VARCHAR(150) NOT NULL,
+  observacao TEXT,
+  referencia_tipo VARCHAR(40),
+  referencia_id INT NULL,
+  criado_por INT NULL,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
+  FOREIGN KEY (criado_por) REFERENCES usuarios(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS alimentos (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  nome VARCHAR(120) NOT NULL,
+  quantidade INT NOT NULL,
+  equipe_id INT NOT NULL,
+  status ENUM('PENDENTE', 'CONFIRMADO') DEFAULT 'PENDENTE',
+  criado_por INT NOT NULL,
+  confirmado_por INT NULL,
+  confirmado_em TIMESTAMP NULL,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
+  FOREIGN KEY (criado_por) REFERENCES usuarios(id) ON DELETE CASCADE,
+  FOREIGN KEY (confirmado_por) REFERENCES usuarios(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS noticias (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  titulo VARCHAR(140) NOT NULL,
+  conteudo TEXT NOT NULL,
+  imagem_url VARCHAR(255),
+  autor_id INT,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (autor_id) REFERENCES usuarios(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS notificacoes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  usuario_id INT NOT NULL,
+  titulo VARCHAR(140) NOT NULL,
+  mensagem VARCHAR(255) NOT NULL,
+  tipo VARCHAR(40) NOT NULL,
+  lida TINYINT(1) DEFAULT 0,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  lida_em TIMESTAMP NULL,
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS configuracoes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  chave VARCHAR(80) UNIQUE NOT NULL,
+  valor TEXT,
+  atualizado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);

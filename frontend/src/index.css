@@ -1,0 +1,94 @@
+@import "tailwindcss";
+
+@layer base {
+  html,
+  body,
+  #root {
+    @apply min-h-screen;
+  }
+
+  body {
+    @apply bg-zinc-50 text-zinc-800 antialiased;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+}
+
+@layer components {
+  .ig-input {
+    @apply w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-sm text-zinc-800 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100;
+  }
+
+  .ig-button {
+    @apply inline-flex items-center justify-center rounded-lg bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .ig-card {
+    @apply rounded-xl border border-zinc-300 bg-white shadow-sm;
+  }
+
+  .like-burst {
+    @apply pointer-events-none absolute left-1/2 top-1/2 text-7xl text-zinc-900 opacity-0;
+    transform: translate(-50%, -50%);
+    animation: likeBurst 0.62s ease-in-out forwards;
+  }
+
+  .like-pop {
+    animation: likePop 0.26s ease-out;
+  }
+
+  .shimmer {
+    @apply rounded-lg;
+    background: linear-gradient(90deg, #f2f2f2 25%, #e9e9e9 50%, #f2f2f2 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.2s linear infinite;
+  }
+}
+
+@keyframes likePop {
+  0% {
+    transform: scale(1);
+  }
+  60% {
+    transform: scale(1.34);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes likeBurst {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.35);
+  }
+  25% {
+    opacity: 0.95;
+    transform: translate(-50%, -50%) scale(1.02);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(1.34);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (max-width: 980px) {
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+}
