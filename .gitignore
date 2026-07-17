@@ -1,6 +1,7 @@
 node_modules
 **/node_modules
 **/.env
+vercel-import.env
 **/dist
 backend/src/uploads/*
 !backend/src/uploads/.gitkeep
