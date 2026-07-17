@@ -1,24 +1,20 @@
-const { pool, query } = require('../config/db');
-
-async function executeOn(db, sql, values = []) {
-  const [rows] = await db.execute(sql, values);
-  return rows;
-}
+const { pool, query, queryOn } = require('../config/db');
 
 async function listMissions() {
   return query(
     `SELECT m.*,
-      (SELECT COUNT(*) FROM envios_missao em WHERE em.missao_id = m.id) AS total_envios
+      (SELECT COUNT(*)::int FROM envios_missao em WHERE em.missao_id = m.id) AS total_envios
      FROM missoes m
      ORDER BY m.data_inicio DESC`
   );
 }
 
 async function createMission(data) {
-  const result = await query(
+  const inserted = await query(
     `INSERT INTO missoes
       (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     RETURNING id`,
     [
       data.titulo,
       data.descricao,
@@ -30,7 +26,7 @@ async function createMission(data) {
       data.liberada_por || null,
     ]
   );
-  const rows = await query('SELECT * FROM missoes WHERE id = ?', [result.insertId]);
+  const rows = await query('SELECT * FROM missoes WHERE id = ?', [inserted[0].id]);
   return rows[0];
 }
 
@@ -74,13 +70,14 @@ async function updateMissionStatus(id, status, userId) {
 }
 
 async function createMissionSubmission(data) {
-  const result = await query(
+  const inserted = await query(
     `INSERT INTO envios_missao
       (missao_id, usuario_id, equipe_id, imagem_url, legenda, status)
-     VALUES (?, ?, ?, ?, ?, 'EM_ANALISE')`,
+     VALUES (?, ?, ?, ?, ?, 'EM_ANALISE')
+     RETURNING id`,
     [data.missao_id, data.usuario_id, data.equipe_id, data.imagem_url, data.legenda]
   );
-  const rows = await query('SELECT * FROM envios_missao WHERE id = ?', [result.insertId]);
+  const rows = await query('SELECT * FROM envios_missao WHERE id = ?', [inserted[0].id]);
   return rows[0];
 }
 
@@ -112,11 +109,11 @@ async function reviewMissionSubmission({
   pontos,
   adminId,
 }) {
-  const connection = await pool.getConnection();
+  const client = await pool.connect();
   try {
-    await connection.beginTransaction();
-    const submissions = await executeOn(
-      connection,
+    await client.query('BEGIN');
+    const submissions = await queryOn(
+      client,
       'SELECT * FROM envios_missao WHERE id = ? FOR UPDATE',
       [submissionId]
     );
@@ -125,63 +122,64 @@ async function reviewMissionSubmission({
       throw new Error('Envio não encontrado.');
     }
 
-    await executeOn(
-      connection,
+    await queryOn(
+      client,
       `UPDATE envios_missao
        SET status = ?, observacao_admin = ?, aprovado_por = ?, revisado_em = NOW()
        WHERE id = ?`,
       [status, observacao || null, adminId, submissionId]
     );
 
-    if (status === 'APROVADA' && submission.pontuacao_creditada === 0) {
-      const missaoRows = await executeOn(
-        connection,
+    if (status === 'APROVADA' && Number(submission.pontuacao_creditada) === 0) {
+      const missaoRows = await queryOn(
+        client,
         'SELECT pontuacao FROM missoes WHERE id = ?',
         [submission.missao_id]
       );
       const basePontos = Number(missaoRows[0]?.pontuacao || 0);
       const pontosFinais = Number(pontos ?? basePontos);
 
-      await executeOn(
-        connection,
+      await queryOn(
+        client,
         `INSERT INTO pontuacoes (equipe_id, pontos, tipo, motivo, observacao, referencia_tipo, referencia_id, criado_por)
          VALUES (?, ?, 'ADICAO', 'Missão aprovada', ?, 'ENVIO_MISSAO', ?, ?)`,
         [submission.equipe_id, pontosFinais, observacao || null, submissionId, adminId]
       );
 
-      await executeOn(
-        connection,
+      await queryOn(
+        client,
         'UPDATE equipes SET pontuacao = pontuacao + ? WHERE id = ?',
         [pontosFinais, submission.equipe_id]
       );
 
-      await executeOn(
-        connection,
+      await queryOn(
+        client,
         'UPDATE envios_missao SET pontuacao_creditada = 1 WHERE id = ?',
         [submissionId]
       );
     }
 
-    await connection.commit();
+    await client.query('COMMIT');
     const updated = await query('SELECT * FROM envios_missao WHERE id = ?', [
       submissionId,
     ]);
     return updated[0];
   } catch (error) {
-    await connection.rollback();
+    await client.query('ROLLBACK');
     throw error;
   } finally {
-    connection.release();
+    client.release();
   }
 }
 
 async function createFoodRecord(data) {
-  const result = await query(
+  const inserted = await query(
     `INSERT INTO alimentos (nome, quantidade, equipe_id, status, criado_por)
-     VALUES (?, ?, ?, 'PENDENTE', ?)`,
+     VALUES (?, ?, ?, 'PENDENTE', ?)
+     RETURNING id`,
     [data.nome, data.quantidade, data.equipe_id, data.criado_por]
   );
-  const rows = await query('SELECT * FROM alimentos WHERE id = ?', [result.insertId]);
+  const rows = await query('SELECT * FROM alimentos WHERE id = ?', [inserted[0].id]);
   return rows[0];
 }
 
@@ -195,11 +193,11 @@ async function listFoodRecords() {
 }
 
 async function confirmFoodRecord(id, adminId, pontosPorQuantidade = 1) {
-  const connection = await pool.getConnection();
+  const client = await pool.connect();
   try {
-    await connection.beginTransaction();
-    const foods = await executeOn(
-      connection,
+    await client.query('BEGIN');
+    const foods = await queryOn(
+      client,
       'SELECT * FROM alimentos WHERE id = ? FOR UPDATE',
       [id]
     );
@@ -210,32 +208,32 @@ async function confirmFoodRecord(id, adminId, pontosPorQuantidade = 1) {
 
     if (food.status !== 'CONFIRMADO') {
       const pontos = Number(food.quantidade || 0) * Number(pontosPorQuantidade);
-      await executeOn(
-        connection,
-        'UPDATE alimentos SET status = "CONFIRMADO", confirmado_por = ?, confirmado_em = NOW() WHERE id = ?',
+      await queryOn(
+        client,
+        `UPDATE alimentos SET status = 'CONFIRMADO', confirmado_por = ?, confirmado_em = NOW() WHERE id = ?`,
         [adminId, id]
       );
-      await executeOn(
-        connection,
+      await queryOn(
+        client,
         `INSERT INTO pontuacoes (equipe_id, pontos, tipo, motivo, referencia_tipo, referencia_id, criado_por)
          VALUES (?, ?, 'ADICAO', 'Alimentos confirmados', 'ALIMENTO', ?, ?)`,
         [food.equipe_id, pontos, id, adminId]
       );
-      await executeOn(
-        connection,
+      await queryOn(
+        client,
         'UPDATE equipes SET pontuacao = pontuacao + ?, alimentos_arrecadados = alimentos_arrecadados + ? WHERE id = ?',
         [pontos, food.quantidade, food.equipe_id]
       );
     }
 
-    await connection.commit();
+    await client.query('COMMIT');
     const rows = await query('SELECT * FROM alimentos WHERE id = ?', [id]);
     return rows[0];
   } catch (error) {
-    await connection.rollback();
+    await client.query('ROLLBACK');
     throw error;
   } finally {
-    connection.release();
+    client.release();
   }
 }
 
@@ -277,8 +275,8 @@ async function listScoreHistory() {
 async function getRanking() {
   return query(
     `SELECT e.id, e.nome, e.cor, e.escudo_url, e.pontuacao,
-            DENSE_RANK() OVER (ORDER BY e.pontuacao DESC) AS posicao,
-            (SELECT MAX(eq.pontuacao) FROM equipes eq) - e.pontuacao AS diferenca_primeiro
+            DENSE_RANK() OVER (ORDER BY e.pontuacao DESC)::int AS posicao,
+            ((SELECT MAX(eq.pontuacao) FROM equipes eq) - e.pontuacao)::int AS diferenca_primeiro
      FROM equipes e
      ORDER BY e.pontuacao DESC, e.nome`
   );

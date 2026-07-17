@@ -14,7 +14,7 @@ async function setConfigValue(key, value) {
   await query(
     `INSERT INTO configuracoes (chave, valor)
      VALUES (?, ?)
-     ON DUPLICATE KEY UPDATE valor = VALUES(valor)`,
+     ON CONFLICT (chave) DO UPDATE SET valor = EXCLUDED.valor, atualizado_em = NOW()`,
     [key, value]
   );
 }

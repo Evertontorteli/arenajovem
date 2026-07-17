@@ -1,41 +1,68 @@
-const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
 const dotenv = require('dotenv');
 
 dotenv.config();
 
-const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'localhost',
-  port: Number(process.env.DB_PORT || 3306),
-  user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || '',
-  database: process.env.DB_NAME || 'arena_jovem',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0,
-});
+const connectionString =
+  process.env.DATABASE_URL ||
+  process.env.POSTGRES_URL ||
+  process.env.POSTGRES_PRISMA_URL ||
+  null;
+
+const shouldUseSsl =
+  process.env.DB_SSL === 'true' ||
+  Boolean(connectionString) ||
+  process.env.NODE_ENV === 'production';
+
+const pool = new Pool(
+  connectionString
+    ? {
+        connectionString,
+        ssl: shouldUseSsl ? { rejectUnauthorized: false } : false,
+      }
+    : {
+        host: process.env.DB_HOST || 'localhost',
+        port: Number(process.env.DB_PORT || 5432),
+        user: process.env.DB_USER || 'postgres',
+        password: process.env.DB_PASSWORD || '',
+        database: process.env.DB_NAME || 'arena_jovem',
+        ssl: shouldUseSsl ? { rejectUnauthorized: false } : false,
+      }
+);
+
+function toPgPlaceholders(sql) {
+  let index = 0;
+  return sql.replace(/\?/g, () => `$${(index += 1)}`);
+}
 
 async function query(sql, values = []) {
-  const [rows] = await pool.execute(sql, values);
-  return rows;
+  const result = await pool.query(toPgPlaceholders(sql), values);
+  return result.rows;
+}
+
+async function queryOn(client, sql, values = []) {
+  const result = await client.query(toPgPlaceholders(sql), values);
+  return result.rows;
 }
 
 async function withTransaction(callback) {
-  const connection = await pool.getConnection();
+  const client = await pool.connect();
   try {
-    await connection.beginTransaction();
-    const result = await callback(connection);
-    await connection.commit();
+    await client.query('BEGIN');
+    const result = await callback(client);
+    await client.query('COMMIT');
     return result;
   } catch (error) {
-    await connection.rollback();
+    await client.query('ROLLBACK');
     throw error;
   } finally {
-    connection.release();
+    client.release();
   }
 }
 
 module.exports = {
   pool,
   query,
+  queryOn,
   withTransaction,
 };

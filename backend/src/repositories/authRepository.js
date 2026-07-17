@@ -31,9 +31,10 @@ async function findUserByGoogleSub(googleSub) {
 }
 
 async function createUser({ nome, email, senhaHash, role, equipeId, telefone, googleSub, foto }) {
-  const result = await query(
+  const rows = await query(
     `INSERT INTO usuarios (nome, email, senha_hash, role, equipe_id, telefone, google_sub, foto)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+     RETURNING id`,
     [
       nome,
       email,
@@ -47,7 +48,7 @@ async function createUser({ nome, email, senhaHash, role, equipeId, telefone, go
   );
 
   return {
-    id: result.insertId,
+    id: rows[0].id,
     nome,
     email,
     telefone: telefone || null,

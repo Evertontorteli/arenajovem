@@ -3,7 +3,7 @@ const { query } = require('../config/db');
 async function listTeams() {
   return query(
     `SELECT e.*,
-      (SELECT COUNT(*) FROM usuarios u WHERE u.equipe_id = e.id) AS participantes
+      (SELECT COUNT(*)::int FROM usuarios u WHERE u.equipe_id = e.id) AS participantes
      FROM equipes e
      ORDER BY e.pontuacao DESC, e.nome`
   );
@@ -15,10 +15,11 @@ async function findTeamById(id) {
 }
 
 async function createTeam(data) {
-  const result = await query(
+  const rows = await query(
     `INSERT INTO equipes
       (nome, cor, escudo_url, foto_url, descricao, alimentos_arrecadados, pontuacao)
-     VALUES (?, ?, ?, ?, ?, ?, 0)`,
+     VALUES (?, ?, ?, ?, ?, ?, 0)
+     RETURNING id`,
     [
       data.nome,
       data.cor,
@@ -28,7 +29,7 @@ async function createTeam(data) {
       data.alimentos_arrecadados || 0,
     ]
   );
-  return findTeamById(result.insertId);
+  return findTeamById(rows[0].id);
 }
 
 async function updateTeam(id, data) {

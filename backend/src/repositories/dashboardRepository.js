@@ -1,12 +1,12 @@
 const { query } = require('../config/db');
 
 async function getAdminMetrics() {
-  const [usuarios] = await query('SELECT COUNT(*) AS total FROM usuarios');
-  const [equipes] = await query('SELECT COUNT(*) AS total FROM equipes');
-  const [missoes] = await query('SELECT COUNT(*) AS total FROM missoes');
-  const [publicacoes] = await query('SELECT COUNT(*) AS total FROM publicacoes');
-  const [curtidas] = await query('SELECT COUNT(*) AS total FROM curtidas');
-  const [comentarios] = await query('SELECT COUNT(*) AS total FROM comentarios');
+  const [usuarios] = await query('SELECT COUNT(*)::int AS total FROM usuarios');
+  const [equipes] = await query('SELECT COUNT(*)::int AS total FROM equipes');
+  const [missoes] = await query('SELECT COUNT(*)::int AS total FROM missoes');
+  const [publicacoes] = await query('SELECT COUNT(*)::int AS total FROM publicacoes');
+  const [curtidas] = await query('SELECT COUNT(*)::int AS total FROM curtidas');
+  const [comentarios] = await query('SELECT COUNT(*)::int AS total FROM comentarios');
   const ranking = await query(
     'SELECT id, nome, pontuacao FROM equipes ORDER BY pontuacao DESC, nome'
   );
@@ -33,7 +33,7 @@ async function getUserDashboardData(userId) {
 
   const ranking = await query(
     `SELECT id, nome, pontuacao,
-            DENSE_RANK() OVER (ORDER BY pontuacao DESC) AS posicao
+            DENSE_RANK() OVER (ORDER BY pontuacao DESC)::int AS posicao
      FROM equipes
      ORDER BY pontuacao DESC, nome`
   );
@@ -46,7 +46,7 @@ async function getUserDashboardData(userId) {
   const proximasAtividades = await query(
     `SELECT id, titulo, data_inicio, data_fim
      FROM missoes
-     WHERE data_inicio >= CURDATE()
+     WHERE data_inicio >= CURRENT_DATE
      ORDER BY data_inicio ASC
      LIMIT 5`
   );

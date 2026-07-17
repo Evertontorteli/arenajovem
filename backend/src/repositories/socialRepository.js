@@ -16,8 +16,8 @@ async function listPosts({ page = 1, limit = 6, cursor = null } = {}) {
   if (decodedCursor) {
     const rows = await query(
       `SELECT p.*, u.nome AS autor_nome, e.nome AS equipe_nome,
-        (SELECT COUNT(*) FROM curtidas c WHERE c.publicacao_id = p.id) AS curtidas,
-        (SELECT COUNT(*) FROM comentarios c2 WHERE c2.publicacao_id = p.id) AS comentarios
+        (SELECT COUNT(*)::int FROM curtidas c WHERE c.publicacao_id = p.id) AS curtidas,
+        (SELECT COUNT(*)::int FROM comentarios c2 WHERE c2.publicacao_id = p.id) AS comentarios
        FROM publicacoes p
        INNER JOIN usuarios u ON u.id = p.autor_id
        INNER JOIN equipes e ON e.id = p.equipe_id
@@ -56,8 +56,8 @@ async function listPosts({ page = 1, limit = 6, cursor = null } = {}) {
 
   const posts = await query(
     `SELECT p.*, u.nome AS autor_nome, e.nome AS equipe_nome,
-      (SELECT COUNT(*) FROM curtidas c WHERE c.publicacao_id = p.id) AS curtidas,
-      (SELECT COUNT(*) FROM comentarios c2 WHERE c2.publicacao_id = p.id) AS comentarios
+      (SELECT COUNT(*)::int FROM curtidas c WHERE c.publicacao_id = p.id) AS curtidas,
+      (SELECT COUNT(*)::int FROM comentarios c2 WHERE c2.publicacao_id = p.id) AS comentarios
      FROM publicacoes p
      INNER JOIN usuarios u ON u.id = p.autor_id
      INNER JOIN equipes e ON e.id = p.equipe_id
@@ -88,10 +88,11 @@ async function listPosts({ page = 1, limit = 6, cursor = null } = {}) {
 }
 
 async function createPost(data) {
-  const result = await query(
+  const inserted = await query(
     `INSERT INTO publicacoes
       (autor_id, equipe_id, imagem_url, texto, tipo_publicacao, missao_id, possui_selo_missao)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     RETURNING id`,
     [
       data.autor_id,
       data.equipe_id,
@@ -102,14 +103,15 @@ async function createPost(data) {
       data.possui_selo_missao ? 1 : 0,
     ]
   );
-  const rows = await query('SELECT * FROM publicacoes WHERE id = ?', [result.insertId]);
+  const rows = await query('SELECT * FROM publicacoes WHERE id = ?', [inserted[0].id]);
   return rows[0];
 }
 
 async function toggleLike(postId, userId, like) {
   if (like) {
     await query(
-      'INSERT IGNORE INTO curtidas (publicacao_id, usuario_id) VALUES (?, ?)',
+      `INSERT INTO curtidas (publicacao_id, usuario_id) VALUES (?, ?)
+       ON CONFLICT (publicacao_id, usuario_id) DO NOTHING`,
       [postId, userId]
     );
   } else {
@@ -132,12 +134,13 @@ async function listComments(postId) {
 }
 
 async function createComment(data) {
-  const result = await query(
+  const inserted = await query(
     `INSERT INTO comentarios (publicacao_id, usuario_id, texto)
-     VALUES (?, ?, ?)`,
+     VALUES (?, ?, ?)
+     RETURNING id`,
     [data.publicacao_id, data.usuario_id, data.texto]
   );
-  const rows = await query('SELECT * FROM comentarios WHERE id = ?', [result.insertId]);
+  const rows = await query('SELECT * FROM comentarios WHERE id = ?', [inserted[0].id]);
   return rows[0];
 }
 
@@ -160,12 +163,13 @@ async function listNews() {
 }
 
 async function createNews(data) {
-  const result = await query(
+  const inserted = await query(
     `INSERT INTO noticias (titulo, conteudo, imagem_url, autor_id)
-     VALUES (?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?)
+     RETURNING id`,
     [data.titulo, data.conteudo, data.imagem_url || null, data.autor_id]
   );
-  const rows = await query('SELECT * FROM noticias WHERE id = ?', [result.insertId]);
+  const rows = await query('SELECT * FROM noticias WHERE id = ?', [inserted[0].id]);
   return rows[0];
 }
 
