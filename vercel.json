@@ -2,13 +2,7 @@
   "services": {
     "frontend": {
       "root": "frontend",
-      "framework": "vite",
-      "rewrites": [
-        {
-          "source": "/((?!assets/).*)",
-          "destination": "/"
-        }
-      ]
+      "framework": "vite"
     },
     "backend": {
       "root": "backend",
@@ -16,6 +10,13 @@
       "entrypoint": "src/app.js"
     }
   },
+  "redirects": [
+    {
+      "source": "/:path((?!api(?:/|$)|uploads(?:/|$)|assets(?:/|$)|.*\\..*).+)",
+      "destination": "/#/:path",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/api(/.*)?",
@@ -32,25 +33,10 @@
       }
     },
     {
-      "source": "/assets/(.*)",
-      "destination": {
-        "type": "service",
-        "service": "frontend"
-      }
-    },
-    {
-      "source": "/favicon.svg",
-      "destination": {
-        "type": "service",
-        "service": "frontend"
-      }
-    },
-    {
       "source": "/(.*)",
       "destination": {
         "type": "service",
-        "service": "frontend",
-        "path": "/"
+        "service": "frontend"
       }
     }
   ]
