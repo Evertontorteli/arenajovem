@@ -5,3 +5,6 @@ vercel-import.env
 **/dist
 backend/src/uploads/*
 !backend/src/uploads/.gitkeep
+
+._*
+**/._*
