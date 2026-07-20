@@ -1,4 +1,5 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   FaHome,
   FaUsers,
@@ -12,10 +13,12 @@ import {
   FaSignOutAlt,
 } from 'react-icons/fa';
 import AdminNavTabs from '../components/AdminNavTabs';
+import DesktopSidebarToggle from '../components/DesktopSidebarToggle';
 import UserAvatar from '../components/UserAvatar';
 import { useAuth } from '../contexts/AuthContext';
 import { getTeamStylesByIndex, getTeamStylesByLabel } from '../utils/teamColors';
 
+const SIDEBAR_STORAGE_KEY = 'arena_desktop_sidebar_open';
 const adminHubRoutes = new Set(['/', '/equipes', '/perfil', '/admin']);
 
 const menu = [
@@ -32,6 +35,11 @@ function MainLayout() {
   const { logout, user, isAdmin, canAccess } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(() => {
+    const saved = localStorage.getItem(SIDEBAR_STORAGE_KEY);
+    if (saved === null) return true;
+    return saved === 'true';
+  });
   const isFeedRoute = location.pathname === '/feed';
   const isProfileRoute = location.pathname === '/perfil';
   const profileTeamStyle = getTeamStylesByLabel(user?.equipe_nome, 'AMARELO');
@@ -85,6 +93,10 @@ function MainLayout() {
 
   const isAdminPanelActive = adminHubRoutes.has(location.pathname);
 
+  useEffect(() => {
+    localStorage.setItem(SIDEBAR_STORAGE_KEY, String(desktopSidebarOpen));
+  }, [desktopSidebarOpen]);
+
   const getNavItemActive = (item, isActive) =>
     item.isAdminPanel ? isAdminPanelActive : isActive;
 
@@ -107,17 +119,39 @@ function MainLayout() {
     }`;
 
   return (
-    <div className="grid h-full min-h-screen md:grid-cols-[245px_1fr]">
-      <aside className="hide-on-mobile sticky top-0 flex h-screen flex-col gap-4 border-r border-zinc-300 bg-white p-3 md:flex">
-        <Link className="px-3 py-3 text-3xl font-semibold tracking-tight text-zinc-900" to="/">
-          Arena Jovem
-        </Link>
+    <div
+      className={`grid h-full min-h-screen transition-[grid-template-columns] duration-200 ${
+        desktopSidebarOpen ? 'md:grid-cols-[245px_1fr]' : 'md:grid-cols-[0px_1fr]'
+      }`}
+    >
+      <aside
+        className={`hide-on-mobile sticky top-0 h-screen flex-col gap-4 overflow-hidden border-r border-zinc-300 bg-white transition-all duration-200 md:flex ${
+          desktopSidebarOpen
+            ? 'w-[245px] p-3 opacity-100'
+            : 'pointer-events-none w-0 border-0 p-0 opacity-0'
+        }`}
+        aria-hidden={!desktopSidebarOpen}
+      >
+        <div className="flex items-center justify-between gap-2 px-1 py-2">
+          <Link
+            className="truncate text-2xl font-semibold tracking-tight text-zinc-900"
+            to="/"
+            tabIndex={desktopSidebarOpen ? 0 : -1}
+          >
+            Arena Jovem
+          </Link>
+          <DesktopSidebarToggle
+            open={desktopSidebarOpen}
+            onToggle={() => setDesktopSidebarOpen(false)}
+          />
+        </div>
         <nav className="grid gap-1">
           {filteredDesktopMenuItems.map((item, index) => (
             <NavLink
               key={item.to}
               to={item.to}
               end
+              tabIndex={desktopSidebarOpen ? 0 : -1}
               className={({ isActive }) =>
                 desktopNavClass({ isActive: getNavItemActive(item, isActive) })
               }
@@ -151,12 +185,23 @@ function MainLayout() {
           <button
             type="button"
             onClick={logout}
+            tabIndex={desktopSidebarOpen ? 0 : -1}
             className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
           >
             <FaSignOutAlt /> Sair
           </button>
         </div>
       </aside>
+
+      {!desktopSidebarOpen ? (
+        <div className="fixed left-3 top-3 z-30 hidden md:block">
+          <DesktopSidebarToggle
+            open={false}
+            onToggle={() => setDesktopSidebarOpen(true)}
+          />
+        </div>
+      ) : null}
+
       <div className="flex h-dvh min-w-0 flex-col overflow-hidden md:h-auto md:overflow-visible md:min-h-screen">
         <header className="z-20 grid h-14 shrink-0 grid-cols-[40px_1fr_40px] items-center bg-white px-4 shadow-[0_4px_12px_rgba(0,0,0,0.08)] md:hidden">
           {isFeedRoute ? (
@@ -195,7 +240,9 @@ function MainLayout() {
           ) : null}
           <Outlet />
         </main>
-        <nav className={`z-30 grid h-14 shrink-0 ${mobileNavGridClass} border-t border-zinc-300 bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.08)] md:hidden`}>
+        <nav
+          className={`z-30 grid h-14 shrink-0 ${mobileNavGridClass} border-t border-zinc-300 bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.08)] md:hidden`}
+        >
           {mobileMenuItems.map((item, index) => (
             <NavLink
               key={`mobile-${item.to}`}

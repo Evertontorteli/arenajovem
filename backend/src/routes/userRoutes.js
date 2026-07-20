@@ -8,6 +8,7 @@ const router = express.Router();
 router.use(requireAuth);
 router.get('/me', userController.me);
 router.put('/me', userController.updateProfile);
+router.put('/me/password', userController.changePassword);
 router.post('/me/avatar', upload.single('foto'), userController.uploadAvatar);
 router.patch('/me/team', userController.updateMyTeam);
 router.get('/', requireRole('ADMIN'), userController.list);

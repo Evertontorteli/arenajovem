@@ -83,6 +83,20 @@ async function updateUserAccess(id, { role, equipeId }) {
   return findById(id);
 }
 
+async function findAuthById(id) {
+  const rows = await query(
+    `SELECT id, senha_hash
+     FROM usuarios
+     WHERE id = ?`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function updatePassword(id, senhaHash) {
+  await query('UPDATE usuarios SET senha_hash = ? WHERE id = ?', [senhaHash, id]);
+}
+
 async function countAdmins() {
   const rows = await query("SELECT COUNT(*) AS total FROM usuarios WHERE role = 'ADMIN'");
   return Number(rows[0]?.total || 0);
@@ -90,8 +104,10 @@ async function countAdmins() {
 
 module.exports = {
   findById,
+  findAuthById,
   listUsers,
   updateProfile,
+  updatePassword,
   updateUserTeam,
   updateUserAccess,
   countAdmins,

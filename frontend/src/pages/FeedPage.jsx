@@ -3,9 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { FaTimes } from 'react-icons/fa';
 import http from '../api/http';
 import FeedCard from '../components/FeedCard';
+import { useAuth } from '../contexts/AuthContext';
 
 function FeedPage() {
   const PAGE_SIZE = 6;
+  const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [posts, setPosts] = useState([]);
@@ -24,6 +26,8 @@ function FeedPage() {
   const sentinelRef = useRef(null);
   const fetchingRef = useRef(false);
   const fileInputRef = useRef(null);
+  const isAdmin = user?.role === 'ADMIN';
+  const adminWithoutTeam = isAdmin && !user?.equipe_id;
 
   const openComposer = () => {
     setPostError('');
@@ -202,6 +206,18 @@ function FeedPage() {
             </header>
 
             <form className="grid gap-2 p-3" onSubmit={createPost}>
+              {adminWithoutTeam ? (
+                <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+                  Esta publicação será marcada como{' '}
+                  <strong className="text-zinc-900">Admin</strong>, pois você
+                  não está vinculado a uma equipe.
+                </p>
+              ) : isAdmin ? (
+                <p className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
+                  Publicações feitas por administrador aparecem com o selo{' '}
+                  <strong className="text-zinc-900">Admin</strong> no feed.
+                </p>
+              ) : null}
               <textarea
                 className="ig-input min-h-[92px]"
                 placeholder="Escreva uma legenda..."

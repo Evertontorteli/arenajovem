@@ -73,7 +73,7 @@ CREATE TABLE IF NOT EXISTS envios_missao (
 CREATE TABLE IF NOT EXISTS publicacoes (
   id SERIAL PRIMARY KEY,
   autor_id INT NOT NULL,
-  equipe_id INT NOT NULL,
+  equipe_id INT,
   imagem_url TEXT NOT NULL,
   texto TEXT,
   tipo_publicacao VARCHAR(20) DEFAULT 'LIVRE' CHECK (tipo_publicacao IN ('LIVRE', 'MISSAO_CONCLUIDA')),
@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS publicacoes (
   possui_selo_missao SMALLINT DEFAULT 0,
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (autor_id) REFERENCES usuarios(id) ON DELETE CASCADE,
-  FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE CASCADE,
+  FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE SET NULL,
   FOREIGN KEY (missao_id) REFERENCES missoes(id) ON DELETE SET NULL
 );
 
@@ -89,10 +89,13 @@ CREATE TABLE IF NOT EXISTS comentarios (
   id SERIAL PRIMARY KEY,
   publicacao_id INT NOT NULL,
   usuario_id INT NOT NULL,
+  parent_id INT,
   texto VARCHAR(300) NOT NULL,
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  atualizado_em TIMESTAMP,
   FOREIGN KEY (publicacao_id) REFERENCES publicacoes(id) ON DELETE CASCADE,
-  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
+  FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES comentarios(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS curtidas (

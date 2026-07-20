@@ -18,6 +18,7 @@ router.post('/posts/:id/like', socialController.likePost);
 router.delete('/posts/:id/like', socialController.unlikePost);
 router.get('/posts/:id/comments', socialController.listComments);
 router.post('/posts/:id/comments', socialController.createComment);
+router.put('/comments/:id', socialController.updateComment);
 router.delete('/comments/:id', socialController.deleteComment);
 
 router.get('/news', socialController.listNews);

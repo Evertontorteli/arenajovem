@@ -13,13 +13,16 @@ const listPosts = asyncHandler(async (req, res) => {
 
 const createPost = asyncHandler(async (req, res) => {
   const imagemUrl = req.file ? await persistUpload(req.file, 'feed') : null;
-  const post = await socialService.createPost({
-    ...req.body,
-    autor_id: req.user.id,
-    equipe_id: req.user.equipe_id,
-    imagem_url: imagemUrl,
-    possui_selo_missao: req.body.tipo_publicacao === 'MISSAO_CONCLUIDA',
-  });
+  const post = await socialService.createPost(
+    {
+      ...req.body,
+      autor_id: req.user.id,
+      equipe_id: req.user.equipe_id || null,
+      imagem_url: imagemUrl,
+      possui_selo_missao: req.body.tipo_publicacao === 'MISSAO_CONCLUIDA',
+    },
+    req.user
+  );
   res.status(201).json(post);
 });
 
@@ -34,7 +37,10 @@ const unlikePost = asyncHandler(async (req, res) => {
 });
 
 const listComments = asyncHandler(async (req, res) => {
-  const comments = await socialService.listComments(req.params.id);
+  const comments = await socialService.listComments(req.params.id, {
+    limit: req.query.limit,
+    offset: req.query.offset,
+  });
   res.json(comments);
 });
 
@@ -43,8 +49,18 @@ const createComment = asyncHandler(async (req, res) => {
     publicacao_id: req.params.id,
     usuario_id: req.user.id,
     texto: req.body.texto,
+    parent_id: req.body.parent_id || null,
   });
   res.status(201).json(comment);
+});
+
+const updateComment = asyncHandler(async (req, res) => {
+  const comment = await socialService.updateComment(
+    req.params.id,
+    req.user,
+    req.body.texto
+  );
+  res.json(comment);
 });
 
 const deleteComment = asyncHandler(async (req, res) => {
@@ -96,6 +112,7 @@ module.exports = {
   unlikePost,
   listComments,
   createComment,
+  updateComment,
   deleteComment,
   listNews,
   createNews,

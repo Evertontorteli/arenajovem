@@ -73,18 +73,18 @@ function AvatarPicker({ user, foto, onFotoChange, onSaved }) {
         </p>
       </div>
 
-      <div className="flex flex-col items-center gap-3">
+      <div className="-mx-1 flex items-center gap-2 overflow-x-auto px-1 pb-1">
         <UserAvatar
           foto={foto}
           nome={user?.nome}
           equipeNome={user?.equipe_nome}
-          sizeClass="h-24 w-24"
-          ringClass="ring-4 ring-zinc-100"
+          sizeClass="h-14 w-14 shrink-0"
+          ringClass="ring-2 ring-zinc-100"
         />
 
         <button
           type="button"
-          className="grid h-11 w-11 place-items-center rounded-full border border-dashed border-zinc-300 bg-zinc-50 text-lg text-zinc-600 transition hover:border-zinc-400 hover:bg-zinc-100 disabled:opacity-60"
+          className="grid h-14 w-14 shrink-0 place-items-center rounded-full border border-dashed border-zinc-300 bg-zinc-50 text-lg text-zinc-600 transition hover:border-zinc-400 hover:bg-zinc-100 disabled:opacity-60"
           aria-label="Enviar foto da galeria ou câmera"
           onClick={() => fileInputRef.current?.click()}
           disabled={saving}
@@ -99,9 +99,7 @@ function AvatarPicker({ user, foto, onFotoChange, onSaved }) {
           className="hidden"
           onChange={handleFileChange}
         />
-      </div>
 
-      <div className="grid grid-cols-4 gap-2 sm:grid-cols-8">
         {AVATAR_PRESETS.map((preset) => {
           const isSelected = selectedPresetId === preset.id && !hasCustomPhoto;
 
@@ -113,13 +111,13 @@ function AvatarPicker({ user, foto, onFotoChange, onSaved }) {
               aria-pressed={isSelected}
               disabled={saving}
               onClick={() => selectPreset(preset.id)}
-              className={`overflow-hidden rounded-full border-2 transition ${
+              className={`shrink-0 overflow-hidden rounded-full border-2 transition ${
                 isSelected
                   ? 'border-zinc-900 ring-2 ring-zinc-200'
                   : 'border-transparent hover:border-zinc-300'
               }`}
             >
-              <CartoonAnimalAvatar animalId={preset.id} className="h-14 w-14 sm:h-16 sm:w-16" />
+              <CartoonAnimalAvatar animalId={preset.id} className="h-14 w-14" />
             </button>
           );
         })}

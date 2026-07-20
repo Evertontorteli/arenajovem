@@ -1,4 +1,5 @@
 const AppError = require('../utils/AppError');
+const bcrypt = require('bcryptjs');
 const userRepository = require('../repositories/userRepository');
 const teamRepository = require('../repositories/teamRepository');
 const { normalizePhone } = require('./authService');
@@ -18,6 +19,39 @@ async function updateProfile(userId, data) {
     data.telefone = normalizePhone(data.telefone);
   }
   return userRepository.updateProfile(userId, data);
+}
+
+async function changePassword(userId, { senhaAtual, senhaNova, confirmarSenha }) {
+  if (!senhaAtual) {
+    throw new AppError('Informe a senha atual.', 400);
+  }
+  if (!senhaNova || String(senhaNova).length < 6) {
+    throw new AppError('A nova senha deve ter pelo menos 6 caracteres.', 400);
+  }
+  if (senhaNova !== confirmarSenha) {
+    throw new AppError('A confirmação da nova senha não confere.', 400);
+  }
+  if (senhaAtual === senhaNova) {
+    throw new AppError('A nova senha deve ser diferente da senha atual.', 400);
+  }
+
+  const authUser = await userRepository.findAuthById(userId);
+  if (!authUser) {
+    throw new AppError('Usuário não encontrado.', 404);
+  }
+
+  const isValid = await bcrypt.compare(
+    String(senhaAtual),
+    String(authUser.senha_hash || '')
+  );
+  if (!isValid) {
+    throw new AppError('Senha atual incorreta.', 401);
+  }
+
+  const senhaHash = await bcrypt.hash(String(senhaNova), 10);
+  await userRepository.updatePassword(userId, senhaHash);
+
+  return { ok: true, message: 'Senha alterada com sucesso.' };
 }
 
 async function updateTeam(userId, equipeId) {
@@ -91,6 +125,7 @@ module.exports = {
   getMe,
   listUsers,
   updateProfile,
+  changePassword,
   updateTeam,
   updateAccess,
 };

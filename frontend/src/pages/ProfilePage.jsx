@@ -11,6 +11,12 @@ function ProfilePage() {
   const [foto, setFoto] = useState(user?.foto || '');
   const [notifications, setNotifications] = useState([]);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [senhaAtual, setSenhaAtual] = useState('');
+  const [senhaNova, setSenhaNova] = useState('');
+  const [confirmarSenha, setConfirmarSenha] = useState('');
+  const [savingPassword, setSavingPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
 
   useEffect(() => {
     setNome(user?.nome || '');
@@ -34,6 +40,44 @@ function ProfilePage() {
       alert('Perfil atualizado.');
     } finally {
       setSavingProfile(false);
+    }
+  };
+
+  const changePassword = async (event) => {
+    event.preventDefault();
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!senhaAtual || !senhaNova || !confirmarSenha) {
+      setPasswordError('Preencha todos os campos de senha.');
+      return;
+    }
+    if (senhaNova.length < 6) {
+      setPasswordError('A nova senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (senhaNova !== confirmarSenha) {
+      setPasswordError('A confirmação da nova senha não confere.');
+      return;
+    }
+
+    setSavingPassword(true);
+    try {
+      const { data } = await http.put('/users/me/password', {
+        senhaAtual,
+        senhaNova,
+        confirmarSenha,
+      });
+      setPasswordSuccess(data.message || 'Senha alterada com sucesso.');
+      setSenhaAtual('');
+      setSenhaNova('');
+      setConfirmarSenha('');
+    } catch (requestError) {
+      setPasswordError(
+        requestError?.response?.data?.message || 'Não foi possível alterar a senha.'
+      );
+    } finally {
+      setSavingPassword(false);
     }
   };
 
@@ -80,6 +124,51 @@ function ProfilePage() {
             />
             <button type="submit" className="ig-button" disabled={savingProfile}>
               {savingProfile ? 'Salvando...' : 'Salvar perfil'}
+            </button>
+          </form>
+
+          <form className="ig-card grid gap-2 p-4" onSubmit={changePassword}>
+            <h3 className="mb-1 text-base font-semibold text-zinc-900">Alterar senha</h3>
+            <p className="mb-1 text-xs text-zinc-500">
+              Informe a senha atual e escolha uma nova senha com pelo menos 6 caracteres.
+            </p>
+            <input
+              className="ig-input"
+              type="password"
+              value={senhaAtual}
+              onChange={(e) => setSenhaAtual(e.target.value)}
+              placeholder="Senha atual"
+              autoComplete="current-password"
+              required
+            />
+            <input
+              className="ig-input"
+              type="password"
+              value={senhaNova}
+              onChange={(e) => setSenhaNova(e.target.value)}
+              placeholder="Nova senha"
+              autoComplete="new-password"
+              required
+              minLength={6}
+            />
+            <input
+              className="ig-input"
+              type="password"
+              value={confirmarSenha}
+              onChange={(e) => setConfirmarSenha(e.target.value)}
+              placeholder="Confirmar nova senha"
+              autoComplete="new-password"
+              required
+              minLength={6}
+            />
+            {passwordError ? (
+              <span className="text-sm text-rose-500">{passwordError}</span>
+            ) : null}
+            {passwordSuccess ? (
+              <span className="text-sm text-emerald-600">{passwordSuccess}</span>
+            ) : null}
+            <button type="submit" className="ig-button" disabled={savingPassword}>
+              {savingPassword ? 'Alterando...' : 'Alterar senha'}
             </button>
           </form>
 

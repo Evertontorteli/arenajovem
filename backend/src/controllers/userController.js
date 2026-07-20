@@ -17,6 +17,11 @@ const updateProfile = asyncHandler(async (req, res) => {
   res.json(user);
 });
 
+const changePassword = asyncHandler(async (req, res) => {
+  const result = await userService.changePassword(req.user.id, req.body);
+  res.json(result);
+});
+
 const uploadAvatar = asyncHandler(async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'Selecione uma imagem para o avatar.' });
@@ -48,6 +53,7 @@ module.exports = {
   me,
   list,
   updateProfile,
+  changePassword,
   uploadAvatar,
   updateTeam,
   updateMyTeam,

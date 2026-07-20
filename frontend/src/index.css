@@ -80,6 +80,17 @@
   }
 }
 
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0.85;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
 @media (max-width: 980px) {
   .hide-on-mobile {
     display: none !important;
