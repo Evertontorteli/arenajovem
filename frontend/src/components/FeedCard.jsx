@@ -415,12 +415,12 @@ function FeedCard({ post, onRefresh }) {
 
       {isCommentsOpen ? (
         <div
-          className="fixed inset-x-0 top-0 bottom-14 z-40 flex items-end justify-center bg-black/55 md:inset-0"
+          className="fixed inset-x-0 top-0 bottom-14 z-40 flex items-end justify-center bg-black/55 lg:inset-0"
           onClick={closeComments}
           role="presentation"
         >
           <section
-            className="flex h-[min(50vh,calc(100dvh-3.5rem))] w-full max-w-[560px] animate-[slideUp_220ms_ease-out] flex-col overflow-hidden rounded-t-2xl border border-zinc-300 bg-white shadow-2xl md:h-[50vh]"
+            className="flex h-[min(50vh,calc(100dvh-3.5rem))] w-full max-w-[560px] animate-[slideUp_220ms_ease-out] flex-col overflow-hidden rounded-t-2xl border border-zinc-300 bg-white shadow-2xl lg:h-[50vh]"
             onClick={(event) => event.stopPropagation()}
           >
             <header className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">

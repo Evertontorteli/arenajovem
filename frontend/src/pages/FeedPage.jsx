@@ -190,7 +190,7 @@ function FeedPage() {
         </div>
         <button
           type="button"
-          className="ig-button hidden w-auto md:inline-flex"
+          className="ig-button hidden w-auto lg:inline-flex"
           onClick={openComposer}
         >
           Nova publicação

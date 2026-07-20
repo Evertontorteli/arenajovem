@@ -175,7 +175,7 @@ function ProfilePage() {
           <button
             type="button"
             onClick={logout}
-            className="ig-card flex w-full items-center justify-center gap-2 p-4 text-sm font-medium text-rose-600 transition hover:bg-rose-50 md:hidden"
+            className="ig-card flex w-full items-center justify-center gap-2 p-4 text-sm font-medium text-rose-600 transition hover:bg-rose-50 lg:hidden"
           >
             <FaSignOutAlt />
             Sair da conta
