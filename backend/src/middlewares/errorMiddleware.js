@@ -1,4 +1,7 @@
 function errorMiddleware(error, _req, res, _next) {
+  // eslint-disable-next-line no-console
+  console.error('[API ERROR]', error?.message || error, error?.stack);
+
   const statusCode = error.statusCode || 500;
   const message =
     statusCode === 500 ? 'Erro interno do servidor.' : error.message;

@@ -6,6 +6,12 @@ function listPosts(pagination) {
 }
 
 function createPost(data) {
+  if (!data.imagem_url) {
+    throw new AppError('Selecione uma imagem para publicar.', 400);
+  }
+  if (!data.equipe_id) {
+    throw new AppError('Você precisa estar em uma equipe para publicar.', 400);
+  }
   return socialRepository.createPost(data);
 }
 

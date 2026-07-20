@@ -6,6 +6,7 @@ import {
 } from 'react-icons/fa';
 import http from '../api/http';
 import { getTeamStylesByLabel } from '../utils/teamColors';
+import { resolveMediaUrl } from '../utils/avatarPresets';
 
 function FeedCard({ post, onRefresh }) {
   const [comments, setComments] = useState([]);
@@ -95,7 +96,7 @@ function FeedCard({ post, onRefresh }) {
         >
           <img
             className="aspect-square w-full object-cover"
-            src={`${import.meta.env.VITE_API_URL_BASE || 'http://localhost:3333'}${post.imagem_url}`}
+            src={resolveMediaUrl(post.imagem_url)}
             alt={post.texto || 'Publicação'}
           />
           {showLikeBurst ? <FaHeart className="like-burst" /> : null}

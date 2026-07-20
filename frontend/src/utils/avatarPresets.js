@@ -30,3 +30,10 @@ export function resolveAvatarImageUrl(foto, apiBase = import.meta.env.VITE_API_U
   if (foto.startsWith('/')) return `${apiBase}${foto}`;
   return foto;
 }
+
+export function resolveMediaUrl(url, apiBase = import.meta.env.VITE_API_URL_BASE || 'http://localhost:3333') {
+  if (!url) return '';
+  if (url.startsWith('http://') || url.startsWith('https://')) return url;
+  if (url.startsWith('/')) return `${apiBase}${url}`;
+  return url;
+}

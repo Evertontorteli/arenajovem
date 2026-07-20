@@ -1,5 +1,6 @@
 const asyncHandler = require('../utils/asyncHandler');
 const socialService = require('../services/socialService');
+const { persistUpload } = require('../utils/persistUpload');
 
 const listPosts = asyncHandler(async (req, res) => {
   const posts = await socialService.listPosts({
@@ -11,11 +12,12 @@ const listPosts = asyncHandler(async (req, res) => {
 });
 
 const createPost = asyncHandler(async (req, res) => {
+  const imagemUrl = req.file ? await persistUpload(req.file, 'feed') : null;
   const post = await socialService.createPost({
     ...req.body,
     autor_id: req.user.id,
     equipe_id: req.user.equipe_id,
-    imagem_url: req.file ? `/uploads/${req.file.filename}` : null,
+    imagem_url: imagemUrl,
     possui_selo_missao: req.body.tipo_publicacao === 'MISSAO_CONCLUIDA',
   });
   res.status(201).json(post);
@@ -56,10 +58,13 @@ const listNews = asyncHandler(async (_req, res) => {
 });
 
 const createNews = asyncHandler(async (req, res) => {
+  const imagemUrl = req.file
+    ? await persistUpload(req.file, 'news')
+    : req.body.imagem_url || null;
   const news = await socialService.createNews({
     ...req.body,
     autor_id: req.user.id,
-    imagem_url: req.file ? `/uploads/${req.file.filename}` : req.body.imagem_url,
+    imagem_url: imagemUrl,
   });
   res.status(201).json(news);
 });

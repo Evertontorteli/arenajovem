@@ -1,6 +1,7 @@
 const asyncHandler = require('../utils/asyncHandler');
 const competitionService = require('../services/competitionService');
 const AppError = require('../utils/AppError');
+const { persistUpload } = require('../utils/persistUpload');
 
 const listMissions = asyncHandler(async (_req, res) => {
   const missions = await competitionService.listMissions();
@@ -8,18 +9,24 @@ const listMissions = asyncHandler(async (_req, res) => {
 });
 
 const createMission = asyncHandler(async (req, res) => {
+  const imagemCapa = req.file
+    ? await persistUpload(req.file, 'missions')
+    : req.body.imagem_capa || null;
   const mission = await competitionService.createMission({
     ...req.body,
-    imagem_capa: req.file ? `/uploads/${req.file.filename}` : req.body.imagem_capa,
+    imagem_capa: imagemCapa,
     liberada_por: req.user.id,
   });
   res.status(201).json(mission);
 });
 
 const updateMission = asyncHandler(async (req, res) => {
+  const imagemCapa = req.file
+    ? await persistUpload(req.file, 'missions')
+    : req.body.imagem_capa;
   const mission = await competitionService.updateMission(req.params.id, {
     ...req.body,
-    imagem_capa: req.file ? `/uploads/${req.file.filename}` : req.body.imagem_capa,
+    imagem_capa: imagemCapa,
   });
   res.json(mission);
 });
@@ -39,11 +46,18 @@ const updateMissionStatus = asyncHandler(async (req, res) => {
 });
 
 const submitMission = asyncHandler(async (req, res) => {
+  if (!req.user.equipe_id) {
+    throw new AppError('Você precisa estar em uma equipe para enviar missão.', 400);
+  }
+  if (!req.file) {
+    throw new AppError('Selecione uma imagem para o envio.', 400);
+  }
+  const imagemUrl = await persistUpload(req.file, 'mission-submissions');
   const submission = await competitionService.submitMission({
     missao_id: req.params.id,
     usuario_id: req.user.id,
     equipe_id: req.user.equipe_id,
-    imagem_url: req.file ? `/uploads/${req.file.filename}` : null,
+    imagem_url: imagemUrl,
     legenda: req.body.legenda,
   });
   res.status(201).json(submission);

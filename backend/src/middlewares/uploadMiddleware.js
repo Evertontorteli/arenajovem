@@ -25,16 +25,6 @@ const allowedExtensions = new Set([
   '.avif',
 ]);
 
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => {
-    cb(null, path.resolve(__dirname, '..', 'uploads'));
-  },
-  filename: (_req, file, cb) => {
-    const extension = path.extname(file.originalname);
-    cb(null, `${Date.now()}-${Math.round(Math.random() * 1e9)}${extension}`);
-  },
-});
-
 const fileFilter = (_req, file, cb) => {
   const extension = path.extname(String(file.originalname || '')).toLowerCase();
   const isValidMimeType = String(file.mimetype || '').startsWith('image/');
@@ -53,8 +43,9 @@ const fileFilter = (_req, file, cb) => {
   return cb(null, true);
 };
 
+// memoryStorage: funciona no Vercel (serverless). Disco local nao e persistente.
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   fileFilter,
   limits: { fileSize: 10 * 1024 * 1024 },
 });

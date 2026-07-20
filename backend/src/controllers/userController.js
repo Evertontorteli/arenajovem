@@ -1,5 +1,6 @@
 const asyncHandler = require('../utils/asyncHandler');
 const userService = require('../services/userService');
+const { persistUpload } = require('../utils/persistUpload');
 
 const me = asyncHandler(async (req, res) => {
   const user = await userService.getMe(req.user.id);
@@ -21,8 +22,9 @@ const uploadAvatar = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Selecione uma imagem para o avatar.' });
   }
 
+  const fotoUrl = await persistUpload(req.file, 'avatars');
   const user = await userService.updateProfile(req.user.id, {
-    foto: `/uploads/${req.file.filename}`,
+    foto: fotoUrl,
   });
   res.json(user);
 });
