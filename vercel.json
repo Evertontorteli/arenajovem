@@ -26,10 +26,25 @@
       }
     },
     {
-      "source": "/(.*)",
+      "source": "/assets/(.*)",
       "destination": {
         "type": "service",
         "service": "frontend"
+      }
+    },
+    {
+      "source": "/favicon.svg",
+      "destination": {
+        "type": "service",
+        "service": "frontend"
+      }
+    },
+    {
+      "source": "/(.*)",
+      "destination": {
+        "type": "service",
+        "service": "frontend",
+        "path": "/index.html"
       }
     }
   ]

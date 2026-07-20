@@ -181,16 +181,10 @@ function FeedPage() {
 
   return (
     <section className="space-y-4">
-      <header className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold text-zinc-900">Feed da Gincana</h2>
-          <p className="mt-1 text-sm text-zinc-500">
-            Visual em coluna central no estilo Instagram.
-          </p>
-        </div>
+      <header className="hidden items-start justify-end gap-3 lg:flex">
         <button
           type="button"
-          className="ig-button hidden w-auto lg:inline-flex"
+          className="ig-button w-auto"
           onClick={openComposer}
         >
           Nova publicação
