@@ -14,6 +14,7 @@ router.post(
   upload.single('imagem'),
   socialController.createPost
 );
+router.delete('/posts/:id', socialController.deletePost);
 router.post('/posts/:id/like', socialController.likePost);
 router.delete('/posts/:id/like', socialController.unlikePost);
 router.get('/posts/:id/comments', socialController.listComments);

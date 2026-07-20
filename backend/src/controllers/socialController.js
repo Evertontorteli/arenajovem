@@ -12,7 +12,7 @@ const listPosts = asyncHandler(async (req, res) => {
 });
 
 const createPost = asyncHandler(async (req, res) => {
-  const imagemUrl = req.file ? await persistUpload(req.file, 'feed') : null;
+  const imagemUrl = req.file ? await persistUpload(req.file) : null;
   const post = await socialService.createPost(
     {
       ...req.body,
@@ -24,6 +24,11 @@ const createPost = asyncHandler(async (req, res) => {
     req.user
   );
   res.status(201).json(post);
+});
+
+const deletePost = asyncHandler(async (req, res) => {
+  await socialService.deletePost(req.params.id, req.user);
+  res.status(204).send();
 });
 
 const likePost = asyncHandler(async (req, res) => {
@@ -75,7 +80,7 @@ const listNews = asyncHandler(async (_req, res) => {
 
 const createNews = asyncHandler(async (req, res) => {
   const imagemUrl = req.file
-    ? await persistUpload(req.file, 'news')
+    ? await persistUpload(req.file)
     : req.body.imagem_url || null;
   const news = await socialService.createNews({
     ...req.body,
@@ -108,6 +113,7 @@ const readNotification = asyncHandler(async (req, res) => {
 module.exports = {
   listPosts,
   createPost,
+  deletePost,
   likePost,
   unlikePost,
   listComments,

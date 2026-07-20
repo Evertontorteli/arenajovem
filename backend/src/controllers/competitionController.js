@@ -10,7 +10,7 @@ const listMissions = asyncHandler(async (_req, res) => {
 
 const createMission = asyncHandler(async (req, res) => {
   const imagemCapa = req.file
-    ? await persistUpload(req.file, 'missions')
+    ? await persistUpload(req.file)
     : req.body.imagem_capa || null;
   const mission = await competitionService.createMission({
     ...req.body,
@@ -22,7 +22,7 @@ const createMission = asyncHandler(async (req, res) => {
 
 const updateMission = asyncHandler(async (req, res) => {
   const imagemCapa = req.file
-    ? await persistUpload(req.file, 'missions')
+    ? await persistUpload(req.file)
     : req.body.imagem_capa;
   const mission = await competitionService.updateMission(req.params.id, {
     ...req.body,
@@ -52,7 +52,7 @@ const submitMission = asyncHandler(async (req, res) => {
   if (!req.file) {
     throw new AppError('Selecione uma imagem para o envio.', 400);
   }
-  const imagemUrl = await persistUpload(req.file, 'mission-submissions');
+  const imagemUrl = await persistUpload(req.file);
   const submission = await competitionService.submitMission({
     missao_id: req.params.id,
     usuario_id: req.user.id,

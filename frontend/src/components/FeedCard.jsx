@@ -3,6 +3,7 @@ import {
   FaHeart,
   FaRegHeart,
   FaRegComment,
+  FaTrashAlt,
 } from 'react-icons/fa';
 import http from '../api/http';
 import { useAuth } from '../contexts/AuthContext';
@@ -34,6 +35,11 @@ function FeedCard({ post, onRefresh }) {
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [showLikeBurst, setShowLikeBurst] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
+  const [isDeleteWarningOpen, setIsDeleteWarningOpen] = useState(false);
+
+  const canDeletePost =
+    user && Number(user.id) === Number(post.autor_id);
 
   const loadPreviewComments = async () => {
     setPreviewLoading(true);
@@ -97,6 +103,34 @@ function FeedCard({ post, onRefresh }) {
     setTimeout(() => setShowLikeBurst(false), 620);
     await http.post(`/social/posts/${post.id}/like`);
     onRefresh();
+  };
+
+  const handleDeletePost = async () => {
+    if (!canDeletePost || isDeletingPost) return;
+    setIsDeleteWarningOpen(true);
+  };
+
+  const cancelDeletePost = () => {
+    if (isDeletingPost) return;
+    setIsDeleteWarningOpen(false);
+  };
+
+  const confirmDeletePost = async () => {
+    if (!canDeletePost || isDeletingPost) return;
+
+    setIsDeletingPost(true);
+    setActionError('');
+    try {
+      await http.delete(`/social/posts/${post.id}`);
+      setIsDeleteWarningOpen(false);
+      onRefresh?.({ deleted: true });
+    } catch (error) {
+      setActionError(
+        error?.response?.data?.message || 'Não foi possível excluir a publicação.'
+      );
+    } finally {
+      setIsDeletingPost(false);
+    }
   };
 
   const openComments = async () => {
@@ -274,8 +308,24 @@ function FeedCard({ post, onRefresh }) {
                 Missão Concluída
               </span>
             ) : null}
+            {canDeletePost ? (
+              <button
+                type="button"
+                onClick={handleDeletePost}
+                disabled={isDeletingPost}
+                className="grid h-8 w-8 place-items-center rounded-lg text-zinc-500 transition hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                aria-label="Excluir publicação"
+                title="Excluir publicação"
+              >
+                <FaTrashAlt className="text-sm" />
+              </button>
+            ) : null}
           </div>
         </header>
+
+        {actionError && !isCommentsOpen ? (
+          <p className="px-3 pb-1 text-sm text-rose-600">{actionError}</p>
+        ) : null}
 
         <div
           className="relative overflow-hidden"
@@ -470,6 +520,53 @@ function FeedCard({ post, onRefresh }) {
               </div>
             </form>
           </section>
+        </div>
+      ) : null}
+
+      {isDeleteWarningOpen ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={`delete-post-title-${post.id}`}
+          onClick={cancelDeletePost}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2
+              id={`delete-post-title-${post.id}`}
+              className="text-lg font-semibold text-zinc-900"
+            >
+              Excluir publicação?
+            </h2>
+            <p className="mt-2 text-sm leading-relaxed text-zinc-600">
+              Esta é a sua publicação. Se continuar, ela será removida do feed
+              permanentemente e não poderá ser recuperada.
+            </p>
+            {actionError ? (
+              <p className="mt-3 text-sm text-rose-600">{actionError}</p>
+            ) : null}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700 transition hover:bg-zinc-100"
+                onClick={cancelDeletePost}
+                disabled={isDeletingPost}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-medium text-white transition hover:bg-rose-700 disabled:opacity-60"
+                onClick={confirmDeletePost}
+                disabled={isDeletingPost}
+              >
+                {isDeletingPost ? 'Excluindo...' : 'Excluir'}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </>

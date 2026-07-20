@@ -107,6 +107,15 @@ async function createPost(data) {
   return rows[0];
 }
 
+async function findPostById(id) {
+  const rows = await query('SELECT * FROM publicacoes WHERE id = ?', [id]);
+  return rows[0] || null;
+}
+
+async function deletePost(id) {
+  await query('DELETE FROM publicacoes WHERE id = ?', [id]);
+}
+
 async function toggleLike(postId, userId, like) {
   if (like) {
     await query(
@@ -316,6 +325,8 @@ async function markNotificationAsRead(id, userId) {
 module.exports = {
   listPosts,
   createPost,
+  findPostById,
+  deletePost,
   toggleLike,
   listComments,
   createComment,

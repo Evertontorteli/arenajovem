@@ -27,7 +27,7 @@ const uploadAvatar = asyncHandler(async (req, res) => {
     return res.status(400).json({ message: 'Selecione uma imagem para o avatar.' });
   }
 
-  const fotoUrl = await persistUpload(req.file, 'avatars');
+  const fotoUrl = await persistUpload(req.file);
   const user = await userService.updateProfile(req.user.id, {
     foto: fotoUrl,
   });

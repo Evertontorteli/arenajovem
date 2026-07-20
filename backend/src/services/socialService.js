@@ -21,6 +21,26 @@ function createPost(data, actor = {}) {
   });
 }
 
+async function deletePost(postId, user) {
+  const post = await socialRepository.findPostById(postId);
+  if (!post) throw new AppError('Publicação não encontrada.', 404);
+  if (Number(post.autor_id) !== Number(user.id)) {
+    throw new AppError('Você só pode excluir a sua própria publicação.', 403);
+  }
+
+  const mediaMatch = String(post.imagem_url || '').match(/^\/api\/media\/(\d+)$/);
+  await socialRepository.deletePost(postId);
+
+  if (mediaMatch) {
+    try {
+      const { query } = require('../config/db');
+      await query('DELETE FROM midias WHERE id = ?', [Number(mediaMatch[1])]);
+    } catch (_error) {
+      // Publicação já removida; mídia órfã não bloqueia a exclusão.
+    }
+  }
+}
+
 function likePost(postId, userId) {
   return socialRepository.toggleLike(postId, userId, true);
 }
@@ -122,6 +142,7 @@ function readNotification(id, userId) {
 module.exports = {
   listPosts,
   createPost,
+  deletePost,
   likePost,
   unlikePost,
   listComments,

@@ -18,6 +18,11 @@ async function ensureUserColumns() {
   }
 }
 
+async function ensureMediaTable() {
+  const mediaRepository = require('./repositories/mediaRepository');
+  await mediaRepository.ensureMediaTable();
+}
+
 async function bootstrap() {
   try {
     if (
@@ -31,6 +36,7 @@ async function bootstrap() {
 
     await query('SELECT 1');
     await ensureUserColumns();
+    await ensureMediaTable();
     await teamService.ensureDefaultTeams();
     await accessProfileService.ensureDefaultProfiles();
     const [adminCount] = await query(

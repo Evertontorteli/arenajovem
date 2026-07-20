@@ -70,6 +70,16 @@ CREATE TABLE IF NOT EXISTS envios_missao (
   FOREIGN KEY (aprovado_por) REFERENCES usuarios(id) ON DELETE SET NULL
 );
 
+CREATE TABLE IF NOT EXISTS midias (
+  id SERIAL PRIMARY KEY,
+  mime_type VARCHAR(64) NOT NULL,
+  tamanho_bytes INT NOT NULL,
+  largura INT,
+  altura INT,
+  dados BYTEA NOT NULL,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 CREATE TABLE IF NOT EXISTS publicacoes (
   id SERIAL PRIMARY KEY,
   autor_id INT NOT NULL,

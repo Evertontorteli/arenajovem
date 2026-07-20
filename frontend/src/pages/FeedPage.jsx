@@ -23,6 +23,7 @@ function FeedPage() {
   const [postError, setPostError] = useState('');
   const [posting, setPosting] = useState(false);
   const [isComposerModalOpen, setIsComposerModalOpen] = useState(false);
+  const [deleteNotice, setDeleteNotice] = useState('');
   const sentinelRef = useRef(null);
   const fetchingRef = useRef(false);
   const fileInputRef = useRef(null);
@@ -133,6 +134,19 @@ function FeedPage() {
     };
   }, [isComposerModalOpen, posting]);
 
+  useEffect(() => {
+    if (!deleteNotice) return undefined;
+    const timer = window.setTimeout(() => setDeleteNotice(''), 4000);
+    return () => window.clearTimeout(timer);
+  }, [deleteNotice]);
+
+  const handlePostRefresh = async (options = {}) => {
+    await fetchPosts({ replace: true });
+    if (options.deleted) {
+      setDeleteNotice('Sua publicação foi excluída com sucesso.');
+    }
+  };
+
   const createPost = async (event) => {
     event.preventDefault();
     if (!file) {
@@ -182,6 +196,15 @@ function FeedPage() {
           Nova publicação
         </button>
       </header>
+
+      {deleteNotice ? (
+        <div
+          className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+          role="status"
+        >
+          {deleteNotice}
+        </div>
+      ) : null}
 
       {isComposerModalOpen ? (
         <div
@@ -271,7 +294,7 @@ function FeedPage() {
             <>
               <div className="grid gap-3">
                 {posts.map((post) => (
-                  <FeedCard key={post.id} post={post} onRefresh={() => fetchPosts({ replace: true })} />
+                  <FeedCard key={post.id} post={post} onRefresh={handlePostRefresh} />
                 ))}
               </div>
               {feedError && posts.length > 0 ? (
