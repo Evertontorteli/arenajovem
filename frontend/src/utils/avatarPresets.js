@@ -24,13 +24,37 @@ export function buildPresetAvatarValue(id) {
   return `${AVATAR_PRESET_PREFIX}${id}`;
 }
 
-function resolveApiBase(apiBase) {
-  if (apiBase !== undefined && apiBase !== null) return apiBase;
-  if (import.meta.env.VITE_API_URL_BASE !== undefined) {
-    return import.meta.env.VITE_API_URL_BASE;
-  }
-  // Em produção (mesmo domínio na Vercel): URL relativa. Em dev: localhost.
-  return import.meta.env.DEV ? 'http://localhost:3333' : '';
+function isUnusableApiBase(value) {
+  if (value === undefined || value === null) return true;
+  if (typeof value !== 'string') return true;
+  const trimmed = value.trim();
+  if (!trimmed) return true;
+  if (trimmed.startsWith('/Volumes/')) return true;
+  if (trimmed.startsWith('file:')) return true;
+  if (!import.meta.env.DEV && /localhost|127\.0\.0\.1/.test(trimmed)) return true;
+  return false;
+}
+
+/**
+ * Origem do backend para montar URLs de mídia.
+ * - Dev: http://localhost:3333
+ * - Prod (mesmo domínio): '' (URL relativa)
+ * - Se VITE_API_URL_BASE for "/api", trata como origem vazia (evita /api/api/media/...).
+ */
+export function resolveApiBase(apiBase) {
+  const raw =
+    apiBase !== undefined && apiBase !== null && !isUnusableApiBase(apiBase)
+      ? String(apiBase)
+      : !isUnusableApiBase(import.meta.env.VITE_API_URL_BASE)
+        ? String(import.meta.env.VITE_API_URL_BASE)
+        : import.meta.env.DEV
+          ? 'http://localhost:3333'
+          : '';
+
+  let base = raw.trim().replace(/\/$/, '');
+  if (base === '/api') return '';
+  if (base.endsWith('/api')) return base.slice(0, -4);
+  return base;
 }
 
 export function resolveAvatarImageUrl(foto, apiBase) {

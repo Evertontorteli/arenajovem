@@ -1,7 +1,20 @@
 import axios from 'axios';
 
+function resolveApiUrl() {
+  const fromEnv = import.meta.env.VITE_API_URL;
+  if (
+    typeof fromEnv === 'string' &&
+    fromEnv.trim() &&
+    !fromEnv.startsWith('/Volumes/') &&
+    (import.meta.env.DEV || !/localhost|127\.0\.0\.1/.test(fromEnv))
+  ) {
+    return fromEnv.replace(/\/$/, '');
+  }
+  return import.meta.env.DEV ? 'http://localhost:3333/api' : '/api';
+}
+
 const http = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3333/api',
+  baseURL: resolveApiUrl(),
 });
 
 http.interceptors.request.use((config) => {
