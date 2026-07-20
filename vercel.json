@@ -2,7 +2,13 @@
   "services": {
     "frontend": {
       "root": "frontend",
-      "framework": "vite"
+      "framework": "vite",
+      "rewrites": [
+        {
+          "source": "/((?!assets/).*)",
+          "destination": "/"
+        }
+      ]
     },
     "backend": {
       "root": "backend",
@@ -44,7 +50,7 @@
       "destination": {
         "type": "service",
         "service": "frontend",
-        "path": "/index.html"
+        "path": "/"
       }
     }
   ]

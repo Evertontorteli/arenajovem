@@ -1,0 +1,7 @@
+{
+  "name": "arenajovem",
+  "private": true,
+  "dependencies": {
+    "@vercel/functions": "^3.7.5"
+  }
+}
