@@ -20,6 +20,12 @@ async function createMission(data) {
     data.quiz_modo_pontuacao === 'TUDO_OU_NADA'
       ? 'TUDO_OU_NADA'
       : 'PROPORCIONAL';
+  const dificuldadeAllowed = new Set(['FACIL', 'MEDIO', 'DIFICIL', 'MUITO_DIFICIL']);
+  const quizDificuldade = dificuldadeAllowed.has(
+    String(data.quiz_dificuldade || '').toUpperCase()
+  )
+    ? String(data.quiz_dificuldade).toUpperCase()
+    : 'MEDIO';
 
   if (tipo === 'QUIZ') {
     const quizRepository = require('./quizRepository');
@@ -32,8 +38,8 @@ async function createMission(data) {
       const inserted = await queryOn(
         client,
         `INSERT INTO missoes
-          (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por, tipo, quiz_modo_pontuacao, quiz_tempo_segundos)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por, tipo, quiz_modo_pontuacao, quiz_tempo_segundos, quiz_dificuldade)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
         [
           data.titulo,
@@ -47,6 +53,7 @@ async function createMission(data) {
           tipo,
           quizModo,
           quizTempo,
+          quizDificuldade,
         ]
       );
       const missaoId = inserted[0].id;
@@ -64,8 +71,8 @@ async function createMission(data) {
 
   const inserted = await query(
     `INSERT INTO missoes
-      (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por, tipo, quiz_modo_pontuacao, quiz_tempo_segundos)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por, tipo, quiz_modo_pontuacao, quiz_tempo_segundos, quiz_dificuldade)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING id`,
     [
       data.titulo,
@@ -78,6 +85,7 @@ async function createMission(data) {
       data.liberada_por || null,
       tipo,
       quizModo,
+      null,
       null,
     ]
   );
@@ -426,6 +434,92 @@ async function getRanking() {
   );
 }
 
+/**
+ * Ranking individual por engajamento (missões, quiz, posts, comentários, curtidas).
+ * Retorna só quem mais participa — top do ranking.
+ */
+async function getUserMissionRanking(limit = 12) {
+  const safeLimit = Math.min(20, Math.max(1, Number(limit) || 12));
+  return query(
+    `WITH atividade AS (
+       SELECT em.usuario_id,
+              COUNT(*)::int AS missoes,
+              0::int AS quizzes,
+              0::int AS posts,
+              0::int AS comentarios,
+              0::int AS curtidas,
+              MAX(em.criado_em) AS ultimo_em
+       FROM envios_missao em
+       GROUP BY em.usuario_id
+       UNION ALL
+       SELECT qt.usuario_id,
+              0, COUNT(*)::int, 0, 0, 0,
+              MAX(qt.criado_em)
+       FROM quiz_tentativas qt
+       GROUP BY qt.usuario_id
+       UNION ALL
+       SELECT p.autor_id,
+              0, 0, COUNT(*)::int, 0, 0,
+              MAX(p.criado_em)
+       FROM publicacoes p
+       GROUP BY p.autor_id
+       UNION ALL
+       SELECT c.usuario_id,
+              0, 0, 0, COUNT(*)::int, 0,
+              MAX(c.criado_em)
+       FROM comentarios c
+       GROUP BY c.usuario_id
+       UNION ALL
+       SELECT cl.usuario_id,
+              0, 0, 0, 0, COUNT(*)::int,
+              MAX(cl.criado_em)
+       FROM curtidas cl
+       GROUP BY cl.usuario_id
+     ),
+     agregado AS (
+       SELECT usuario_id,
+              SUM(missoes)::int AS missoes,
+              SUM(quizzes)::int AS quizzes,
+              SUM(posts)::int AS posts,
+              SUM(comentarios)::int AS comentarios,
+              SUM(curtidas)::int AS curtidas,
+              (
+                SUM(missoes) * 5
+                + SUM(quizzes) * 5
+                + SUM(posts) * 3
+                + SUM(comentarios) * 2
+                + SUM(curtidas)
+              )::int AS engajamento,
+              MAX(ultimo_em) AS ultimo_em
+       FROM atividade
+       GROUP BY usuario_id
+     )
+     SELECT u.id AS usuario_id,
+            u.nome AS usuario_nome,
+            u.foto AS usuario_foto,
+            e.id AS equipe_id,
+            e.nome AS equipe_nome,
+            a.engajamento,
+            a.missoes,
+            a.quizzes,
+            a.posts,
+            a.comentarios,
+            a.curtidas,
+            DENSE_RANK() OVER (
+              ORDER BY a.engajamento DESC,
+                       a.ultimo_em DESC
+            )::int AS posicao
+     FROM agregado a
+     INNER JOIN usuarios u ON u.id = a.usuario_id
+     LEFT JOIN equipes e ON e.id = u.equipe_id
+     WHERE u.role = 'PARTICIPANTE'
+       AND a.engajamento > 0
+     ORDER BY posicao ASC, u.nome ASC
+     LIMIT ?`,
+    [safeLimit]
+  );
+}
+
 module.exports = {
   listMissions,
   createMission,
@@ -446,4 +540,5 @@ module.exports = {
   createManualScore,
   listScoreHistory,
   getRanking,
+  getUserMissionRanking,
 };

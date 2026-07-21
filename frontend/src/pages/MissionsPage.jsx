@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import http from '../api/http';
+import UserAvatar from '../components/UserAvatar';
 import { useAuth } from '../contexts/AuthContext';
 import { resolveMediaUrl } from '../utils/avatarPresets';
 
@@ -19,6 +20,13 @@ const TIPO_LABEL = {
   AUDIO: 'Áudio',
   VIDEO: 'Vídeo',
   QUIZ: 'Quiz',
+};
+
+const DIFICULDADE_LABEL = {
+  FACIL: 'Fácil',
+  MEDIO: 'Médio',
+  DIFICIL: 'Difícil',
+  MUITO_DIFICIL: 'Muito Difícil',
 };
 
 function acceptForMissionTipo(tipo) {
@@ -90,6 +98,7 @@ function MissionsPage() {
     tipo: 'FOTO',
     quiz_modo_pontuacao: 'PROPORCIONAL',
     quiz_tempo_segundos: '',
+    quiz_dificuldade: 'MEDIO',
   });
   const [perguntas, setPerguntas] = useState([emptyQuestion()]);
   const [capaFile, setCapaFile] = useState(null);
@@ -105,14 +114,25 @@ function MissionsPage() {
   const [secondsLeft, setSecondsLeft] = useState(null);
   /** 0 = intro, 1..N = pergunta, 'confirm' = revisão final */
   const [quizStep, setQuizStep] = useState(0);
+  const [userRanking, setUserRanking] = useState([]);
 
   const loadMissions = async () => {
     const { data } = await http.get('/competition/missions');
     setMissions(data);
   };
 
+  const loadUserRanking = async () => {
+    try {
+      const { data } = await http.get('/competition/ranking/users');
+      setUserRanking(Array.isArray(data) ? data : []);
+    } catch {
+      setUserRanking([]);
+    }
+  };
+
   useEffect(() => {
     loadMissions();
+    loadUserRanking();
   }, []);
 
   useEffect(() => {
@@ -180,6 +200,7 @@ function MissionsPage() {
         tipo: 'FOTO',
         quiz_modo_pontuacao: 'PROPORCIONAL',
         quiz_tempo_segundos: '',
+        quiz_dificuldade: 'MEDIO',
       });
       setCapaFile(null);
       setCapaFileName('');
@@ -236,7 +257,9 @@ function MissionsPage() {
       if (data.minha_tentativa) {
         setQuizStep('done');
         setQuizMessage(
-          `Resultado: ${data.minha_tentativa.acertos}/${data.minha_tentativa.total_perguntas} · ${data.minha_tentativa.pontos_obtidos} pts · ${formatDuration(data.minha_tentativa.duracao_ms)}`
+          isAdmin && data.minha_tentativa.acertos != null
+            ? `Resultado: ${data.minha_tentativa.acertos}/${data.minha_tentativa.total_perguntas} · ${data.minha_tentativa.pontos_obtidos} pts · ${formatDuration(data.minha_tentativa.duracao_ms)}`
+            : 'Respostas enviadas! O resultado será uma surpresa quando a missão for encerrada e publicada no feed.'
         );
       } else {
         // Sempre mostra a tela "Antes de começar" ao abrir o modal.
@@ -310,13 +333,11 @@ function MissionsPage() {
           ? {
               ...prev,
               minha_tentativa: {
-                acertos: data.acertos,
                 total_perguntas: data.total_perguntas,
-                pontos_obtidos: data.pontos_obtidos,
                 duracao_ms: data.duracao_ms,
+                enviado: true,
               },
               historico: data.historico || prev.historico,
-              ranking: data.ranking || prev.ranking,
               sessao: null,
             }
           : prev
@@ -371,8 +392,43 @@ function MissionsPage() {
     <section className="space-y-4">
       <header>
         <h2 className="text-2xl font-semibold text-zinc-900">Missões</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          Pontuação automática, prazo real, 1 envio por pessoa e ranking do quiz.
+        {userRanking.length ? (
+          <div className="mt-3" aria-label="Mais engajados">
+            <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Mais engajados
+            </p>
+            <div className="flex items-center overflow-x-auto pb-1">
+              {userRanking.map((row, index) => (
+                <div
+                  key={row.usuario_id}
+                  title={`#${row.posicao} ${row.usuario_nome}`}
+                  className="relative shrink-0"
+                  style={{
+                    marginLeft: index === 0 ? 0 : -10,
+                    zIndex: userRanking.length - index,
+                  }}
+                >
+                  <UserAvatar
+                    foto={row.usuario_foto}
+                    nome={row.usuario_nome}
+                    equipeNome={row.equipe_nome}
+                    sizeClass="h-11 w-11"
+                    ringClass="ring-2 ring-white"
+                  />
+                  <span className="absolute -bottom-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-zinc-900 px-0.5 text-[9px] font-semibold text-white">
+                    {row.posicao}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="mt-2 text-xs text-zinc-500">
+            Os avatares dos mais engajados aparecem aqui conforme a participação.
+          </p>
+        )}
+        <p className="mt-2 text-sm text-zinc-500">
+          Pontuação automática, prazo real e 1 envio por pessoa.
         </p>
       </header>
 
@@ -401,21 +457,38 @@ function MissionsPage() {
                 </select>
               </label>
               {form.tipo === 'QUIZ' ? (
-                <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                  Modo de pontuação
-                  <select
-                    className="ig-input"
-                    value={form.quiz_modo_pontuacao}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, quiz_modo_pontuacao: e.target.value }))
-                    }
-                  >
-                    <option value="PROPORCIONAL">Proporcional aos acertos</option>
-                    <option value="TUDO_OU_NADA">Só se acertar tudo</option>
-                  </select>
-                </label>
+                <>
+                  <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                    Modo de pontuação
+                    <select
+                      className="ig-input"
+                      value={form.quiz_modo_pontuacao}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, quiz_modo_pontuacao: e.target.value }))
+                      }
+                    >
+                      <option value="PROPORCIONAL">Proporcional aos acertos</option>
+                      <option value="TUDO_OU_NADA">Só se acertar tudo</option>
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                    Nível de dificuldade
+                    <select
+                      className="ig-input"
+                      value={form.quiz_dificuldade}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, quiz_dificuldade: e.target.value }))
+                      }
+                    >
+                      <option value="FACIL">Fácil</option>
+                      <option value="MEDIO">Médio</option>
+                      <option value="DIFICIL">Difícil</option>
+                      <option value="MUITO_DIFICIL">Muito Difícil</option>
+                    </select>
+                  </label>
+                </>
               ) : (
-                <div className="hidden sm:block" />
+                <div className="hidden sm:block sm:col-span-1" />
               )}
               <label className="grid gap-1 text-sm font-medium text-zinc-700">
                 Título
@@ -665,7 +738,7 @@ function MissionsPage() {
                 <small className="text-xs text-zinc-500">
                   {mission.pontuacao} pts
                   {mission.tipo === 'QUIZ'
-                    ? ` · ${mission.quiz_modo_pontuacao === 'TUDO_OU_NADA' ? 'tudo ou nada' : 'proporcional'}`
+                    ? ` · ${mission.quiz_modo_pontuacao === 'TUDO_OU_NADA' ? 'tudo ou nada' : 'proporcional'} · ${DIFICULDADE_LABEL[mission.quiz_dificuldade] || 'Médio'}`
                     : ''}
                   {mission.tipo === 'QUIZ' && mission.quiz_tempo_segundos
                     ? ` · ${mission.quiz_tempo_segundos}s`
@@ -676,10 +749,9 @@ function MissionsPage() {
 
                 {mission.tipo === 'QUIZ' && mission.minha_tentativa ? (
                   <p className="text-sm text-emerald-700">
-                    Sua pontuação: {mission.minha_tentativa.acertos}/
-                    {mission.minha_tentativa.total_perguntas} ·{' '}
-                    {mission.minha_tentativa.pontos_obtidos} pts ·{' '}
-                    {formatDuration(mission.minha_tentativa.duracao_ms)}
+                    {isAdmin && mission.minha_tentativa.acertos != null
+                      ? `Sua pontuação: ${mission.minha_tentativa.acertos}/${mission.minha_tentativa.total_perguntas} · ${mission.minha_tentativa.pontos_obtidos} pts · ${formatDuration(mission.minha_tentativa.duracao_ms)}`
+                      : 'Quiz enviado · resultado no feed ao encerrar'}
                   </p>
                 ) : null}
 
@@ -716,6 +788,7 @@ function MissionsPage() {
                             );
                             alert(data.message || 'Publicado no feed!');
                             await loadMissions();
+                            await loadUserRanking();
                           } catch (error) {
                             alert(
                               error?.response?.data?.message ||
@@ -736,7 +809,7 @@ function MissionsPage() {
                     disabled={!isMissionActionable(mission) && !mission.minha_tentativa}
                   >
                     {mission.minha_tentativa
-                      ? 'Ver histórico / ranking'
+                      ? 'Ver histórico'
                       : 'Responder quiz'}
                   </button>
                 ) : mission.meu_envio ? (
@@ -776,7 +849,7 @@ function MissionsPage() {
                     className="bg-transparent p-0 text-left text-xs text-blue-700 hover:underline"
                     onClick={() => openQuiz(mission.id)}
                   >
-                    Pré-visualizar / ranking
+                    Pré-visualizar
                   </button>
                 ) : null}
               </article>
@@ -813,6 +886,9 @@ function MissionsPage() {
                       {quizData?.missao?.quiz_modo_pontuacao === 'TUDO_OU_NADA'
                         ? 'tudo ou nada'
                         : 'proporcional'}
+                      {quizData?.missao?.quiz_dificuldade
+                        ? ` · ${DIFICULDADE_LABEL[quizData.missao.quiz_dificuldade] || 'Médio'}`
+                        : ''}
                       {quizData?.missao?.quiz_tempo_segundos
                         ? ` · limite ${quizData.missao.quiz_tempo_segundos}s`
                         : ''}
@@ -1060,52 +1136,31 @@ function MissionsPage() {
               {quizData?.historico?.itens?.length ? (
                 <div className="grid gap-2 border-t border-zinc-200 pt-3">
                   <h4 className="text-sm font-semibold text-zinc-900">
-                    Seu histórico (gabarito liberado após responder)
+                    Suas respostas
                   </h4>
+                  <p className="text-xs text-zinc-500">
+                    Acertos e gabarito serão divulgados no feed quando a missão
+                    for encerrada.
+                  </p>
                   {quizData.historico.itens.map((item, index) => (
                     <div
                       key={item.pergunta_id}
-                      className={`rounded-lg border px-3 py-2 text-sm ${
-                        item.acertou
-                          ? 'border-emerald-200 bg-emerald-50'
-                          : 'border-rose-200 bg-rose-50'
-                      }`}
+                      className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm"
                     >
-                      <p className="font-medium">
-                        {index + 1}. {item.enunciado}{' '}
-                        <span>{item.acertou ? '· Acertou' : '· Errou'}</span>
+                      <p className="font-medium text-zinc-800">
+                        {index + 1}. {item.enunciado}
                       </p>
                       <p className="text-xs text-zinc-600">
                         Sua resposta: {item.resposta_escolhida}
                       </p>
-                      {!item.acertou ? (
+                      {isAdmin && item.acertou != null ? (
                         <p className="text-xs text-zinc-600">
-                          Correta: {item.resposta_correta}
+                          {item.acertou ? 'Acertou' : 'Errou'}
+                          {item.resposta_correta
+                            ? ` · Correta: ${item.resposta_correta}`
+                            : ''}
                         </p>
                       ) : null}
-                    </div>
-                  ))}
-                </div>
-              ) : null}
-
-              {quizData?.ranking?.length ? (
-                <div className="grid gap-2 border-t border-zinc-200 pt-3">
-                  <h4 className="text-sm font-semibold text-zinc-900">
-                    Ranking (pontos · quem foi mais rápido)
-                  </h4>
-                  {quizData.ranking.map((row) => (
-                    <div
-                      key={`${row.usuario_id}-${row.posicao}`}
-                      className="flex items-center justify-between gap-2 text-sm"
-                    >
-                      <span>
-                        #{row.posicao} {row.usuario_nome}{' '}
-                        <span className="text-zinc-500">({row.equipe_nome})</span>
-                      </span>
-                      <span className="text-zinc-700">
-                        {row.pontos_obtidos} pts · {row.acertos}/{row.total_perguntas} ·{' '}
-                        {formatDuration(row.duracao_ms)}
-                      </span>
                     </div>
                   ))}
                 </div>

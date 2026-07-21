@@ -38,6 +38,28 @@ async function ensureQuizSchema() {
   `);
 
   await query(`
+    ALTER TABLE missoes
+      ADD COLUMN IF NOT EXISTS quiz_dificuldade VARCHAR(20) DEFAULT 'MEDIO'
+  `);
+  await query(`
+    DO $$
+    BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'missoes_quiz_dificuldade_check'
+      ) THEN
+        ALTER TABLE missoes
+          ADD CONSTRAINT missoes_quiz_dificuldade_check
+          CHECK (quiz_dificuldade IN ('FACIL', 'MEDIO', 'DIFICIL', 'MUITO_DIFICIL'));
+      END IF;
+    END $$;
+  `);
+  await query(`
+    UPDATE missoes
+    SET quiz_dificuldade = 'MEDIO'
+    WHERE tipo = 'QUIZ' AND quiz_dificuldade IS NULL
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS missao_perguntas (
       id SERIAL PRIMARY KEY,
       missao_id INT NOT NULL REFERENCES missoes(id) ON DELETE CASCADE,
@@ -347,9 +369,19 @@ async function getAttemptHistory(missaoId, usuarioId) {
       midia_tipo: row.midia_tipo,
       acertou: Number(row.acertou) === 1,
       resposta_escolhida: row.resposta_escolhida,
-      // Gabarito só depois de responder
+      // Gabarito só para admin / publicação no feed — participante não vê
       resposta_correta: row.resposta_correta,
     })),
+  };
+}
+
+function sanitizeHistoryForParticipant(historico) {
+  if (!historico?.itens) return historico;
+  return {
+    ...historico,
+    itens: historico.itens.map(
+      ({ resposta_correta: _c, acertou: _a, ...item }) => item
+    ),
   };
 }
 
@@ -565,6 +597,7 @@ module.exports = {
   startQuizSession,
   getQuizSessionStart,
   getAttemptHistory,
+  sanitizeHistoryForParticipant,
   getQuizRanking,
   submitQuizAttempt,
 };

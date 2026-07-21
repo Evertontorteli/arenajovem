@@ -197,6 +197,11 @@ const getRanking = asyncHandler(async (_req, res) => {
   res.json(ranking);
 });
 
+const getUserMissionRanking = asyncHandler(async (_req, res) => {
+  const ranking = await competitionService.getUserMissionRanking();
+  res.json(ranking);
+});
+
 module.exports = {
   listMissions,
   createMission,
@@ -217,4 +222,5 @@ module.exports = {
   createManualScore,
   listScoreHistory,
   getRanking,
+  getUserMissionRanking,
 };

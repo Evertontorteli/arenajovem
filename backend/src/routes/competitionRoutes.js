@@ -76,5 +76,6 @@ router.get('/scores/history', competitionController.listScoreHistory);
 router.post('/scores/manual', requireRole('ADMIN'), competitionController.createManualScore);
 
 router.get('/ranking', competitionController.getRanking);
+router.get('/ranking/users', competitionController.getUserMissionRanking);
 
 module.exports = router;

@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS missoes (
   tipo VARCHAR(20) NOT NULL DEFAULT 'FOTO' CHECK (tipo IN ('FOTO', 'AUDIO', 'VIDEO', 'QUIZ')),
   quiz_modo_pontuacao VARCHAR(20) NOT NULL DEFAULT 'PROPORCIONAL' CHECK (quiz_modo_pontuacao IN ('PROPORCIONAL', 'TUDO_OU_NADA')),
   quiz_tempo_segundos INT,
+  quiz_dificuldade VARCHAR(20) DEFAULT 'MEDIO' CHECK (quiz_dificuldade IN ('FACIL', 'MEDIO', 'DIFICIL', 'MUITO_DIFICIL')),
   liberada_por INT,
   liberada_em TIMESTAMP,
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

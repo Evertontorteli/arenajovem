@@ -87,16 +87,25 @@ async function listMissions(user) {
     const base = withWindowMeta(mission);
     if (mission.tipo === 'QUIZ') {
       const attempt = attempts.get(Number(mission.id));
+      const isAdmin = user?.role === 'ADMIN';
       return {
         ...base,
         minha_tentativa: attempt
-          ? {
-              acertos: attempt.acertos,
-              total_perguntas: attempt.total_perguntas,
-              pontos_obtidos: attempt.pontos_obtidos,
-              duracao_ms: attempt.duracao_ms,
-              criado_em: attempt.criado_em,
-            }
+          ? isAdmin
+            ? {
+                acertos: attempt.acertos,
+                total_perguntas: attempt.total_perguntas,
+                pontos_obtidos: attempt.pontos_obtidos,
+                duracao_ms: attempt.duracao_ms,
+                criado_em: attempt.criado_em,
+              }
+            : {
+                // Participante só sabe que enviou — resultado no feed ao encerrar
+                total_perguntas: attempt.total_perguntas,
+                duracao_ms: attempt.duracao_ms,
+                criado_em: attempt.criado_em,
+                enviado: true,
+              }
           : null,
       };
     }
@@ -141,6 +150,7 @@ async function createMission(data) {
         ? 'TUDO_OU_NADA'
         : 'PROPORCIONAL',
     quiz_tempo_segundos: data.quiz_tempo_segundos,
+    quiz_dificuldade: data.quiz_dificuldade,
   });
 }
 
@@ -222,13 +232,16 @@ async function postMissionToFeed(missionId, adminUser, options = {}) {
     texto = `Missão concluída: ${mission.titulo}\n\nA ${tipoLabel} foi encerrada. Confira no feed e comente com o seu time!`;
 
     if (mission.tipo === 'QUIZ') {
-      const ranking = await quizRepository.getQuizRanking(missionId, 3);
-      if (ranking.length) {
-        const lines = ranking.map(
-          (row) =>
-            `#${row.posicao} ${row.usuario_nome} (${row.equipe_nome}) — ${row.pontos_obtidos} pts`
-        );
-        texto += `\n\nTop do quiz:\n${lines.join('\n')}`;
+      const perguntas = await quizRepository.getMissionQuestions(missionId, {
+        includeCorrect: true,
+      });
+      if (perguntas.length) {
+        const gabarito = perguntas.map((pergunta, index) => {
+          const correta =
+            pergunta.alternativas?.find((alt) => alt.correta)?.texto || '—';
+          return `${index + 1}. ${pergunta.enunciado}\n   Resposta: ${correta}`;
+        });
+        texto += `\n\nGabarito:\n${gabarito.join('\n')}`;
       }
     }
   }
@@ -333,6 +346,9 @@ async function getMissionQuiz(missaoId, user) {
   if (user?.id) {
     if (attempt) {
       historico = await quizRepository.getAttemptHistory(missaoId, user.id);
+      if (!isAdmin) {
+        historico = quizRepository.sanitizeHistoryForParticipant(historico);
+      }
     } else if (mission.status === 'ABERTA' && user.equipe_id) {
       // Sessão (timer) só inicia em startMissionQuiz — aqui só lê se já existir.
       const iniciadoEm = await quizRepository.getQuizSessionStart(missaoId, user.id);
@@ -340,7 +356,10 @@ async function getMissionQuiz(missaoId, user) {
         sessao = { iniciado_em: iniciadoEm };
       }
     }
-    ranking = await quizRepository.getQuizRanking(missaoId, 15);
+    // Ranking do quiz fica no feed quando o admin publica — não no modal do participante.
+    if (isAdmin) {
+      ranking = await quizRepository.getQuizRanking(missaoId, 15);
+    }
   }
 
   const tempoLimite = Number(mission.quiz_tempo_segundos || 0) || null;
@@ -364,6 +383,7 @@ async function getMissionQuiz(missaoId, user) {
       janela: getMissionWindowState(mission),
       quiz_modo_pontuacao: mission.quiz_modo_pontuacao || 'PROPORCIONAL',
       quiz_tempo_segundos: tempoLimite,
+      quiz_dificuldade: mission.quiz_dificuldade || 'MEDIO',
     },
     perguntas,
     sessao: sessao
@@ -373,14 +393,22 @@ async function getMissionQuiz(missaoId, user) {
         }
       : null,
     minha_tentativa: attempt
-      ? {
-          id: attempt.id,
-          acertos: attempt.acertos,
-          total_perguntas: attempt.total_perguntas,
-          pontos_obtidos: attempt.pontos_obtidos,
-          duracao_ms: attempt.duracao_ms,
-          criado_em: attempt.criado_em,
-        }
+      ? isAdmin
+        ? {
+            id: attempt.id,
+            acertos: attempt.acertos,
+            total_perguntas: attempt.total_perguntas,
+            pontos_obtidos: attempt.pontos_obtidos,
+            duracao_ms: attempt.duracao_ms,
+            criado_em: attempt.criado_em,
+          }
+        : {
+            id: attempt.id,
+            total_perguntas: attempt.total_perguntas,
+            duracao_ms: attempt.duracao_ms,
+            criado_em: attempt.criado_em,
+            enviado: true,
+          }
       : null,
     historico,
     ranking,
@@ -449,21 +477,19 @@ async function submitMissionQuiz({ missaoId, user, respostas }) {
       respostas,
     });
 
-    const historico = await quizRepository.getAttemptHistory(
+    const historicoRaw = await quizRepository.getAttemptHistory(
       missaoId,
       user.id
     );
-    const ranking = await quizRepository.getQuizRanking(missaoId, 15);
+    const historico = quizRepository.sanitizeHistoryForParticipant(historicoRaw);
 
     return {
       ok: true,
-      acertos: tentativa.acertos,
       total_perguntas: tentativa.total_perguntas,
-      pontos_obtidos: tentativa.pontos_obtidos,
       duracao_ms: tentativa.duracao_ms,
       historico,
-      ranking,
-      message: `Você acertou ${tentativa.acertos} de ${tentativa.total_perguntas} e somou ${tentativa.pontos_obtidos} ponto(s) para o seu time.`,
+      message:
+        'Respostas enviadas! O resultado será uma surpresa quando a missão for encerrada e publicada no feed.',
     };
   } catch (error) {
     if (error.status) {
@@ -531,6 +557,10 @@ async function getRanking() {
   return ranking;
 }
 
+async function getUserMissionRanking() {
+  return competitionRepository.getUserMissionRanking(10);
+}
+
 module.exports = {
   listMissions,
   createMission,
@@ -551,4 +581,5 @@ module.exports = {
   createManualScore,
   listScoreHistory,
   getRanking,
+  getUserMissionRanking,
 };
