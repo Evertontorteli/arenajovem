@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { getTeamStylesByLabel } from '../utils/teamColors';
 import { resolveMediaUrl } from '../utils/avatarPresets';
 import AdminSeal from './AdminSeal';
+import UserAvatar from './UserAvatar';
 
 const COMMENTS_PAGE_SIZE = 30;
 
@@ -274,10 +275,14 @@ function FeedCard({ post, onRefresh }) {
       <article className="ig-card mx-auto w-full max-w-[470px] overflow-hidden">
         <header className="flex items-center justify-between gap-2 px-3 py-2.5">
           <div className="flex items-center gap-2.5">
-            <span
-              className={`h-8 w-8 rounded-full ${
-                isAdminPost && !post.equipe_nome ? 'bg-zinc-800' : teamStyle.bg
-              }`}
+            <UserAvatar
+              foto={post.autor_foto}
+              nome={post.autor_nome}
+              equipeNome={post.equipe_nome}
+              sizeClass="h-8 w-8"
+              ringClass={
+                isAdminPost && !post.equipe_nome ? 'ring-2 ring-zinc-800' : ''
+              }
             />
             <div className="flex min-w-0 flex-col">
               <div className="flex items-center gap-1.5">

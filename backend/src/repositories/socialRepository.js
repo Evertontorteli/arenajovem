@@ -15,7 +15,7 @@ async function listPosts({ page = 1, limit = 6, cursor = null } = {}) {
 
   if (decodedCursor) {
     const rows = await query(
-      `SELECT p.*, u.nome AS autor_nome, u.role AS autor_role, e.nome AS equipe_nome,
+      `SELECT p.*, u.nome AS autor_nome, u.role AS autor_role, u.foto AS autor_foto, e.nome AS equipe_nome,
         (SELECT COUNT(*)::int FROM curtidas c WHERE c.publicacao_id = p.id) AS curtidas,
         (SELECT COUNT(*)::int FROM comentarios c2 WHERE c2.publicacao_id = p.id) AS comentarios
        FROM publicacoes p
@@ -55,7 +55,7 @@ async function listPosts({ page = 1, limit = 6, cursor = null } = {}) {
   const offset = (safePage - 1) * safeLimit;
 
   const posts = await query(
-    `SELECT p.*, u.nome AS autor_nome, u.role AS autor_role, e.nome AS equipe_nome,
+    `SELECT p.*, u.nome AS autor_nome, u.role AS autor_role, u.foto AS autor_foto, e.nome AS equipe_nome,
       (SELECT COUNT(*)::int FROM curtidas c WHERE c.publicacao_id = p.id) AS curtidas,
       (SELECT COUNT(*)::int FROM comentarios c2 WHERE c2.publicacao_id = p.id) AS comentarios
      FROM publicacoes p
