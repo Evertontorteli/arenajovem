@@ -46,15 +46,18 @@ function RegisterPage() {
   };
 
   return (
-    <div className="grid min-h-[var(--app-height,100dvh)] place-items-center bg-zinc-50 p-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+    <div className="flex min-h-[var(--app-height,100dvh)] items-center justify-center bg-zinc-50 px-5 py-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-[360px]">
-        <form className="ig-card grid gap-2 border-zinc-300 px-6 py-7" onSubmit={handleSubmit}>
+        <form
+          className="ig-card grid gap-2 border-zinc-300 px-6 py-5 max-[720px]:gap-1.5 max-[720px]:py-4"
+          onSubmit={handleSubmit}
+        >
           <img
             src={logoArena}
             alt="Logo Arena Jovem"
-            className="mx-auto mb-1 w-full max-w-[280px] object-contain"
+            className="mx-auto mb-1 h-auto w-auto max-h-[min(140px,22svh)] max-w-[min(200px,50vw)] object-contain"
           />
-          <p className="mb-2 text-center text-sm text-zinc-500">
+          <p className="mb-1 text-center text-sm text-zinc-500">
             Crie sua conta manualmente para participar da gincana.
           </p>
           <input
