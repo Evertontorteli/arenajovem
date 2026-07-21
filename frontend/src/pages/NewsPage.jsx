@@ -56,7 +56,7 @@ function NewsPage() {
             </form>
           ) : null}
 
-          <div className="grid gap-3 md:grid-cols-2">
+          <div className="grid gap-3">
             {news.map((item) => (
               <article className="ig-card grid gap-3 p-4" key={item.id}>
                 <div className="flex items-center justify-between gap-2">
