@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { FaTimes } from 'react-icons/fa';
 import http from '../api/http';
 import { useAuth } from '../contexts/AuthContext';
 import { resolveMediaUrl } from '../utils/avatarPresets';
@@ -115,6 +116,15 @@ function MissionsPage() {
   }, []);
 
   useEffect(() => {
+    if (!activeQuizId) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [activeQuizId]);
+
+  useEffect(() => {
     if (!quizData?.sessao || quizData.minha_tentativa) {
       setSecondsLeft(null);
       return undefined;
@@ -202,6 +212,15 @@ function MissionsPage() {
     } catch (error) {
       alert(error?.response?.data?.message || 'Não foi possível enviar a missão.');
     }
+  };
+
+  const closeQuiz = () => {
+    setActiveQuizId(null);
+    setQuizData(null);
+    setQuizError('');
+    setQuizMessage('');
+    setQuizStep(0);
+    setQuizAnswers({});
   };
 
   const openQuiz = async (missionId) => {
@@ -767,38 +786,51 @@ function MissionsPage() {
           </div>
 
           {activeQuizId ? (
-            <div className="ig-card grid gap-4 border-zinc-300 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <h3 className="text-base font-semibold text-zinc-900">
-                    {quizData?.missao?.titulo || 'Quiz'}
-                  </h3>
-                  <p className="text-sm text-zinc-500">
-                    {quizData?.missao?.pontuacao || 0} pts ·{' '}
-                    {quizData?.missao?.quiz_modo_pontuacao === 'TUDO_OU_NADA'
-                      ? 'tudo ou nada'
-                      : 'proporcional'}
-                    {quizData?.missao?.quiz_tempo_segundos
-                      ? ` · limite ${quizData.missao.quiz_tempo_segundos}s`
-                      : ''}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  className="bg-transparent p-0 text-sm text-zinc-500 hover:underline"
-                  onClick={() => {
-                    setActiveQuizId(null);
-                    setQuizData(null);
-                    setQuizError('');
-                    setQuizMessage('');
-                    setQuizStep(0);
-                    setQuizAnswers({});
-                  }}
-                >
-                  Fechar
-                </button>
-              </div>
+            <div
+              className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-4"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="quiz-modal-title"
+              onClick={() => {
+                // Evita fechar no meio das perguntas por clique acidental no fundo.
+                if (quizStep === 0 || quizStep === 'done' || quizData?.minha_tentativa) {
+                  closeQuiz();
+                }
+              }}
+            >
+              <div
+                className="flex max-h-[min(92dvh,920px)] w-full max-w-lg flex-col overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <header className="flex shrink-0 items-start justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+                  <div className="min-w-0">
+                    <h3
+                      id="quiz-modal-title"
+                      className="truncate text-base font-semibold text-zinc-900"
+                    >
+                      {quizData?.missao?.titulo || 'Quiz'}
+                    </h3>
+                    <p className="text-sm text-zinc-500">
+                      {quizData?.missao?.pontuacao || 0} pts ·{' '}
+                      {quizData?.missao?.quiz_modo_pontuacao === 'TUDO_OU_NADA'
+                        ? 'tudo ou nada'
+                        : 'proporcional'}
+                      {quizData?.missao?.quiz_tempo_segundos
+                        ? ` · limite ${quizData.missao.quiz_tempo_segundos}s`
+                        : ''}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-zinc-300 text-zinc-600 transition hover:bg-zinc-100"
+                    onClick={closeQuiz}
+                    aria-label="Fechar quiz"
+                  >
+                    <FaTimes />
+                  </button>
+                </header>
 
+                <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-4">
               {secondsLeft != null && !quizData?.minha_tentativa ? (
                 <p
                   className={`text-sm font-semibold ${
@@ -1080,6 +1112,8 @@ function MissionsPage() {
                   ))}
                 </div>
               ) : null}
+                </div>
+              </div>
             </div>
           ) : null}
         </div>
