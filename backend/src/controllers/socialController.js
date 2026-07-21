@@ -4,7 +4,6 @@ const { persistUpload } = require('../utils/persistUpload');
 
 const listPosts = asyncHandler(async (req, res) => {
   const posts = await socialService.listPosts({
-    page: req.query.page,
     limit: req.query.limit,
     cursor: req.query.cursor,
     userId: req.user.id,

@@ -95,6 +95,11 @@ CREATE TABLE IF NOT EXISTS publicacoes (
   FOREIGN KEY (missao_id) REFERENCES missoes(id) ON DELETE SET NULL
 );
 
+CREATE INDEX IF NOT EXISTS idx_publicacoes_feed
+  ON publicacoes (criado_em DESC, id DESC);
+CREATE INDEX IF NOT EXISTS idx_publicacoes_autor
+  ON publicacoes (autor_id);
+
 CREATE TABLE IF NOT EXISTS comentarios (
   id SERIAL PRIMARY KEY,
   publicacao_id INT NOT NULL,
@@ -108,6 +113,12 @@ CREATE TABLE IF NOT EXISTS comentarios (
   FOREIGN KEY (parent_id) REFERENCES comentarios(id) ON DELETE CASCADE
 );
 
+CREATE INDEX IF NOT EXISTS idx_comentarios_publicacao_raiz
+  ON comentarios (publicacao_id, criado_em DESC)
+  WHERE parent_id IS NULL;
+CREATE INDEX IF NOT EXISTS idx_comentarios_parent
+  ON comentarios (parent_id, criado_em ASC);
+
 CREATE TABLE IF NOT EXISTS curtidas (
   id SERIAL PRIMARY KEY,
   publicacao_id INT NOT NULL,
@@ -117,6 +128,11 @@ CREATE TABLE IF NOT EXISTS curtidas (
   FOREIGN KEY (publicacao_id) REFERENCES publicacoes(id) ON DELETE CASCADE,
   FOREIGN KEY (usuario_id) REFERENCES usuarios(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_curtidas_publicacao
+  ON curtidas (publicacao_id);
+CREATE INDEX IF NOT EXISTS idx_curtidas_usuario_publicacao
+  ON curtidas (usuario_id, publicacao_id);
 
 CREATE TABLE IF NOT EXISTS pontuacoes (
   id SERIAL PRIMARY KEY,

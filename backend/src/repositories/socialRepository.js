@@ -4,9 +4,12 @@ const {
   encodeCursorToken,
   decodeCursorToken,
 } = require('../utils/cursorToken');
+const { ensureFeedIndexes } = require('../database/ensureFeedIndexes');
 
-async function listPosts({ page = 1, limit = 6, cursor = null, userId = null } = {}) {
-  const safeLimit = Math.min(20, Math.max(1, Number(limit) || 6));
+async function listPosts({ limit = 6, cursor = null, userId = null } = {}) {
+  await ensureFeedIndexes();
+
+  const safeLimit = Math.min(12, Math.max(1, Number(limit) || 6));
   const safeLimitPlusOne = safeLimit + 1;
   const decodedCursor = decodeCursorToken(cursor);
   if (cursor && !decodedCursor) {
@@ -22,6 +25,28 @@ async function listPosts({ page = 1, limit = 6, cursor = null, userId = null } =
        )) AS curtida_por_mim`
     : 'FALSE AS curtida_por_mim';
 
+  const previewCommentsSelect = `(
+    SELECT COALESCE(json_agg(row_to_json(preview)), '[]'::json)
+    FROM (
+      SELECT c.id, c.texto, c.usuario_id, u2.nome AS autor_nome, c.criado_em
+      FROM comentarios c
+      INNER JOIN usuarios u2 ON u2.id = c.usuario_id
+      WHERE c.publicacao_id = p.id AND c.parent_id IS NULL
+      ORDER BY c.criado_em DESC
+      LIMIT 3
+    ) preview
+  ) AS comentarios_preview`;
+
+  const selectSql = `SELECT p.*, u.nome AS autor_nome, u.role AS autor_role, u.foto AS autor_foto, e.nome AS equipe_nome,
+      (SELECT COUNT(*)::int FROM curtidas c WHERE c.publicacao_id = p.id) AS curtidas,
+      (SELECT COUNT(*)::int FROM comentarios c2 WHERE c2.publicacao_id = p.id AND c2.parent_id IS NULL) AS comentarios,
+      ${likedByMeSelect},
+      ${previewCommentsSelect}
+     FROM publicacoes p
+     INNER JOIN usuarios u ON u.id = p.autor_id
+     LEFT JOIN equipes e ON e.id = p.equipe_id`;
+
+  let rows;
   if (decodedCursor) {
     const params = hasViewer
       ? [
@@ -36,14 +61,8 @@ async function listPosts({ page = 1, limit = 6, cursor = null, userId = null } =
           decodedCursor.id,
         ];
 
-    const rows = await query(
-      `SELECT p.*, u.nome AS autor_nome, u.role AS autor_role, u.foto AS autor_foto, e.nome AS equipe_nome,
-        (SELECT COUNT(*)::int FROM curtidas c WHERE c.publicacao_id = p.id) AS curtidas,
-        (SELECT COUNT(*)::int FROM comentarios c2 WHERE c2.publicacao_id = p.id) AS comentarios,
-        ${likedByMeSelect}
-       FROM publicacoes p
-       INNER JOIN usuarios u ON u.id = p.autor_id
-       LEFT JOIN equipes e ON e.id = p.equipe_id
+    rows = await query(
+      `${selectSql}
        WHERE (
          p.criado_em < ?
          OR (p.criado_em = ? AND p.id < ?)
@@ -52,59 +71,29 @@ async function listPosts({ page = 1, limit = 6, cursor = null, userId = null } =
        LIMIT ${safeLimitPlusOne}`,
       params
     );
-
-    const hasMore = rows.length > safeLimit;
-    const items = hasMore ? rows.slice(0, safeLimit) : rows;
-    const nextCursor = hasMore
-      ? encodeCursorToken(items[items.length - 1])
-      : null;
-
-    return {
-      items,
-      pagination: {
-        limit: safeLimit,
-        hasMore,
-        nextCursor,
-        mode: 'cursor',
-      },
-    };
+  } else {
+    const params = hasViewer ? [viewerId] : [];
+    rows = await query(
+      `${selectSql}
+       ORDER BY p.criado_em DESC, p.id DESC
+       LIMIT ${safeLimitPlusOne}`,
+      params
+    );
   }
 
-  const safePage = Math.max(1, Number(page) || 1);
-  const offset = (safePage - 1) * safeLimit;
-  const params = hasViewer ? [viewerId] : [];
-
-  const posts = await query(
-    `SELECT p.*, u.nome AS autor_nome, u.role AS autor_role, u.foto AS autor_foto, e.nome AS equipe_nome,
-      (SELECT COUNT(*)::int FROM curtidas c WHERE c.publicacao_id = p.id) AS curtidas,
-      (SELECT COUNT(*)::int FROM comentarios c2 WHERE c2.publicacao_id = p.id) AS comentarios,
-      ${likedByMeSelect}
-     FROM publicacoes p
-     INNER JOIN usuarios u ON u.id = p.autor_id
-     LEFT JOIN equipes e ON e.id = p.equipe_id
-     ORDER BY p.criado_em DESC, p.id DESC
-     LIMIT ${safeLimit} OFFSET ${offset}`,
-    params
-  );
-
-  const [countRow] = await query('SELECT COUNT(*) AS total FROM publicacoes');
-  const total = Number(countRow?.total || 0);
-  const totalPages = Math.ceil(total / safeLimit) || 1;
-  const hasMore = safePage < totalPages;
-  const nextCursor = posts.length
-    ? encodeCursorToken(posts[posts.length - 1])
+  const hasMore = rows.length > safeLimit;
+  const items = hasMore ? rows.slice(0, safeLimit) : rows;
+  const nextCursor = hasMore
+    ? encodeCursorToken(items[items.length - 1])
     : null;
 
   return {
-    items: posts,
+    items,
     pagination: {
-      page: safePage,
       limit: safeLimit,
-      total,
-      totalPages,
       hasMore,
-      nextCursor: hasMore ? nextCursor : null,
-      mode: 'offset',
+      nextCursor,
+      mode: 'cursor',
     },
   };
 }

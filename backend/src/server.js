@@ -23,6 +23,11 @@ async function ensureMediaTable() {
   await mediaRepository.ensureMediaTable();
 }
 
+async function ensureFeedIndexes() {
+  const { ensureFeedIndexes: ensureIndexes } = require('./database/ensureFeedIndexes');
+  await ensureIndexes();
+}
+
 async function bootstrap() {
   try {
     if (
@@ -37,6 +42,7 @@ async function bootstrap() {
     await query('SELECT 1');
     await ensureUserColumns();
     await ensureMediaTable();
+    await ensureFeedIndexes();
     await teamService.ensureDefaultTeams();
     await accessProfileService.ensureDefaultProfiles();
     const [adminCount] = await query(

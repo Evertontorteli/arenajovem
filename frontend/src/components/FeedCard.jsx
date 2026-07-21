@@ -27,8 +27,10 @@ function FeedCard({ post, onRefresh }) {
   const [commentsOffset, setCommentsOffset] = useState(0);
   const [commentsHasMore, setCommentsHasMore] = useState(false);
   const [commentsTotal, setCommentsTotal] = useState(0);
-  const [previewComments, setPreviewComments] = useState([]);
-  const [previewLoading, setPreviewLoading] = useState(true);
+  const [previewComments, setPreviewComments] = useState(() => {
+    const initial = post.comentarios_preview;
+    return Array.isArray(initial) ? initial : [];
+  });
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [replyTo, setReplyTo] = useState(null);
@@ -43,14 +45,14 @@ function FeedCard({ post, onRefresh }) {
     user && Number(user.id) === Number(post.autor_id);
 
   const loadPreviewComments = async () => {
-    setPreviewLoading(true);
+    // Preview já vem no feed; só recarrega se precisar atualizar após ação.
     try {
       const { data } = await http.get(`/social/posts/${post.id}/comments`, {
         params: { limit: 3, offset: 0 },
       });
       setPreviewComments(data.items || []);
-    } finally {
-      setPreviewLoading(false);
+    } catch (_error) {
+      // Mantém preview atual se a atualização falhar.
     }
   };
 
@@ -78,8 +80,9 @@ function FeedCard({ post, onRefresh }) {
   };
 
   useEffect(() => {
-    loadPreviewComments();
-  }, [post.id, post.comentarios]);
+    const preview = post.comentarios_preview;
+    setPreviewComments(Array.isArray(preview) ? preview : []);
+  }, [post.id, post.comentarios, post.comentarios_preview]);
 
   useEffect(() => {
     if (!isCommentsOpen) return undefined;
@@ -389,10 +392,7 @@ function FeedCard({ post, onRefresh }) {
           <p className="text-sm text-zinc-800">
             <strong title={post.autor_nome}>{autorNome}</strong> {post.texto}
           </p>
-          {previewLoading && totalComments > 0 ? (
-            <p className="text-sm text-zinc-400">Carregando comentários...</p>
-          ) : null}
-          {!previewLoading && previewComments.length > 0 ? (
+          {previewComments.length > 0 ? (
             <div className="grid gap-1">
               {previewComments.map((comment) => (
                 <p key={comment.id} className="text-sm text-zinc-800">
