@@ -98,12 +98,28 @@ function FeedCard({ post, onRefresh }) {
   }, [isCommentsOpen]);
 
   const toggleLike = async () => {
+    const alreadyLiked = Boolean(post.curtida_por_mim);
     setIsLikeAnimating(true);
-    setShowLikeBurst(true);
+    if (!alreadyLiked) {
+      setShowLikeBurst(true);
+      setTimeout(() => setShowLikeBurst(false), 620);
+    }
     setTimeout(() => setIsLikeAnimating(false), 260);
-    setTimeout(() => setShowLikeBurst(false), 620);
-    await http.post(`/social/posts/${post.id}/like`);
-    onRefresh();
+    try {
+      if (alreadyLiked) {
+        await http.delete(`/social/posts/${post.id}/like`);
+      } else {
+        await http.post(`/social/posts/${post.id}/like`);
+      }
+      onRefresh?.();
+    } catch (error) {
+      setActionError(
+        error?.response?.data?.message ||
+          (alreadyLiked
+            ? 'Não foi possível remover a curtida.'
+            : 'Não foi possível curtir a publicação.')
+      );
+    }
   };
 
   const handleDeletePost = async () => {
@@ -353,11 +369,12 @@ function FeedCard({ post, onRefresh }) {
           <div className="flex items-center gap-3">
             <button
               type="button"
-              className={`bg-transparent p-0 text-xl ${post.curtidas > 0 ? 'text-rose-500' : 'text-zinc-800'} ${isLikeAnimating ? 'like-pop' : ''}`}
+              className={`bg-transparent p-0 text-xl ${post.curtida_por_mim ? 'text-rose-500' : 'text-zinc-800'} ${isLikeAnimating ? 'like-pop' : ''}`}
               onClick={toggleLike}
-              aria-label="Curtir"
+              aria-label={post.curtida_por_mim ? 'Descurtir' : 'Curtir'}
+              title={post.curtida_por_mim ? 'Descurtir' : 'Curtir'}
             >
-              {post.curtidas > 0 ? <FaHeart /> : <FaRegHeart />}
+              {post.curtida_por_mim ? <FaHeart /> : <FaRegHeart />}
             </button>
             <button
               type="button"

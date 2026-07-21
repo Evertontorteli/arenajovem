@@ -7,6 +7,7 @@ const listPosts = asyncHandler(async (req, res) => {
     page: req.query.page,
     limit: req.query.limit,
     cursor: req.query.cursor,
+    userId: req.user.id,
   });
   res.json(posts);
 });
