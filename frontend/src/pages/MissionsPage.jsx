@@ -238,10 +238,8 @@ function MissionsPage() {
         setQuizMessage(
           `Resultado: ${data.minha_tentativa.acertos}/${data.minha_tentativa.total_perguntas} · ${data.minha_tentativa.pontos_obtidos} pts · ${formatDuration(data.minha_tentativa.duracao_ms)}`
         );
-      } else if (data.sessao?.iniciado_em) {
-        // Já iniciou antes — retoma nas perguntas (timer continua).
-        setQuizStep(1);
       } else {
+        // Sempre mostra a tela "Antes de começar" ao abrir o modal.
         setQuizStep(0);
       }
     } catch (error) {
