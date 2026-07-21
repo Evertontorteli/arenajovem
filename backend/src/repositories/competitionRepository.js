@@ -94,27 +94,107 @@ async function createMission(data) {
 }
 
 async function updateMission(id, data) {
-  await query(
-    `UPDATE missoes
-     SET titulo = COALESCE(?, titulo),
-         descricao = COALESCE(?, descricao),
-         imagem_capa = COALESCE(?, imagem_capa),
-         pontuacao = COALESCE(?, pontuacao),
-         data_inicio = COALESCE(?, data_inicio),
-         data_fim = COALESCE(?, data_fim)
-     WHERE id = ?`,
-    [
-      data.titulo || null,
-      data.descricao || null,
-      data.imagem_capa || null,
-      data.pontuacao ?? null,
-      data.data_inicio || null,
-      data.data_fim || null,
-      id,
-    ]
+  const quizRepository = require('./quizRepository');
+  await quizRepository.ensureQuizSchema();
+
+  const dificuldadeAllowed = new Set(['FACIL', 'MEDIO', 'DIFICIL', 'MUITO_DIFICIL']);
+  const quizDificuldade = data.quiz_dificuldade
+    ? dificuldadeAllowed.has(String(data.quiz_dificuldade).toUpperCase())
+      ? String(data.quiz_dificuldade).toUpperCase()
+      : null
+    : null;
+  const quizModo =
+    data.quiz_modo_pontuacao === 'TUDO_OU_NADA'
+      ? 'TUDO_OU_NADA'
+      : data.quiz_modo_pontuacao === 'PROPORCIONAL'
+        ? 'PROPORCIONAL'
+        : null;
+  const hasTempoKey = Object.prototype.hasOwnProperty.call(
+    data,
+    'quiz_tempo_segundos'
   );
-  const rows = await query('SELECT * FROM missoes WHERE id = ?', [id]);
-  return rows[0];
+  const quizTempo = hasTempoKey
+    ? data.quiz_tempo_segundos === '' || data.quiz_tempo_segundos == null
+      ? null
+      : Math.max(0, Number(data.quiz_tempo_segundos) || 0) || null
+    : undefined;
+
+  const hasPerguntas = Array.isArray(data.perguntas);
+
+  return withTransaction(async (client) => {
+    if (hasTempoKey) {
+      await queryOn(
+        client,
+        `UPDATE missoes
+         SET titulo = COALESCE(?, titulo),
+             descricao = COALESCE(?, descricao),
+             imagem_capa = COALESCE(?, imagem_capa),
+             pontuacao = COALESCE(?, pontuacao),
+             data_inicio = COALESCE(?, data_inicio),
+             data_fim = COALESCE(?, data_fim),
+             quiz_modo_pontuacao = COALESCE(?, quiz_modo_pontuacao),
+             quiz_tempo_segundos = ?,
+             quiz_dificuldade = COALESCE(?, quiz_dificuldade)
+         WHERE id = ?`,
+        [
+          data.titulo || null,
+          data.descricao || null,
+          data.imagem_capa || null,
+          data.pontuacao ?? null,
+          data.data_inicio || null,
+          data.data_fim || null,
+          quizModo,
+          quizTempo,
+          quizDificuldade,
+          id,
+        ]
+      );
+    } else {
+      await queryOn(
+        client,
+        `UPDATE missoes
+         SET titulo = COALESCE(?, titulo),
+             descricao = COALESCE(?, descricao),
+             imagem_capa = COALESCE(?, imagem_capa),
+             pontuacao = COALESCE(?, pontuacao),
+             data_inicio = COALESCE(?, data_inicio),
+             data_fim = COALESCE(?, data_fim),
+             quiz_modo_pontuacao = COALESCE(?, quiz_modo_pontuacao),
+             quiz_dificuldade = COALESCE(?, quiz_dificuldade)
+         WHERE id = ?`,
+        [
+          data.titulo || null,
+          data.descricao || null,
+          data.imagem_capa || null,
+          data.pontuacao ?? null,
+          data.data_inicio || null,
+          data.data_fim || null,
+          quizModo,
+          quizDificuldade,
+          id,
+        ]
+      );
+    }
+
+    if (hasPerguntas) {
+      const attempts = await queryOn(
+        client,
+        `SELECT COUNT(*)::int AS total FROM quiz_tentativas WHERE missao_id = ?`,
+        [id]
+      );
+      if (Number(attempts[0]?.total || 0) > 0) {
+        const err = new Error(
+          'Não é possível alterar as perguntas: já existem respostas neste quiz.'
+        );
+        err.status = 409;
+        throw err;
+      }
+      await quizRepository.replaceMissionQuestions(client, id, data.perguntas);
+    }
+
+    const rows = await queryOn(client, 'SELECT * FROM missoes WHERE id = ?', [id]);
+    return rows[0];
+  });
 }
 
 async function deleteMission(id) {
@@ -435,11 +515,11 @@ async function getRanking() {
 }
 
 /**
- * Ranking individual por engajamento (missões, quiz, posts, comentários, curtidas).
- * Retorna só quem mais participa — top do ranking.
+ * Top participantes por engajamento (missões, quiz, posts, comentários, curtidas).
+ * Sempre considera todos os participantes com equipe e devolve até `limit`.
  */
-async function getUserMissionRanking(limit = 12) {
-  const safeLimit = Math.min(20, Math.max(1, Number(limit) || 12));
+async function getUserMissionRanking(limit = 10) {
+  const safeLimit = Math.min(10, Math.max(1, Number(limit) || 10));
   return query(
     `WITH atividade AS (
        SELECT em.usuario_id,
@@ -493,29 +573,33 @@ async function getUserMissionRanking(limit = 12) {
               MAX(ultimo_em) AS ultimo_em
        FROM atividade
        GROUP BY usuario_id
+     ),
+     ranked AS (
+       SELECT u.id AS usuario_id,
+              u.nome AS usuario_nome,
+              u.foto AS usuario_foto,
+              e.id AS equipe_id,
+              e.nome AS equipe_nome,
+              COALESCE(a.engajamento, 0)::int AS engajamento,
+              COALESCE(a.missoes, 0)::int AS missoes,
+              COALESCE(a.quizzes, 0)::int AS quizzes,
+              COALESCE(a.posts, 0)::int AS posts,
+              COALESCE(a.comentarios, 0)::int AS comentarios,
+              COALESCE(a.curtidas, 0)::int AS curtidas,
+              ROW_NUMBER() OVER (
+                ORDER BY COALESCE(a.engajamento, 0) DESC,
+                         COALESCE(a.ultimo_em, u.criado_em) DESC NULLS LAST,
+                         u.nome ASC
+              )::int AS posicao
+       FROM usuarios u
+       INNER JOIN equipes e ON e.id = u.equipe_id
+       LEFT JOIN agregado a ON a.usuario_id = u.id
+       WHERE u.role = 'PARTICIPANTE'
      )
-     SELECT u.id AS usuario_id,
-            u.nome AS usuario_nome,
-            u.foto AS usuario_foto,
-            e.id AS equipe_id,
-            e.nome AS equipe_nome,
-            a.engajamento,
-            a.missoes,
-            a.quizzes,
-            a.posts,
-            a.comentarios,
-            a.curtidas,
-            DENSE_RANK() OVER (
-              ORDER BY a.engajamento DESC,
-                       a.ultimo_em DESC
-            )::int AS posicao
-     FROM agregado a
-     INNER JOIN usuarios u ON u.id = a.usuario_id
-     LEFT JOIN equipes e ON e.id = u.equipe_id
-     WHERE u.role = 'PARTICIPANTE'
-       AND a.engajamento > 0
-     ORDER BY posicao ASC, u.nome ASC
-     LIMIT ?`,
+     SELECT *
+     FROM ranked
+     WHERE posicao <= ?
+     ORDER BY posicao ASC`,
     [safeLimit]
   );
 }

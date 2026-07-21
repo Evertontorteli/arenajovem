@@ -9,8 +9,11 @@ function pickFile(files, fieldname) {
 }
 
 const listMissions = asyncHandler(async (req, res) => {
-  const missions = await competitionService.listMissions(req.user);
-  res.json(missions);
+  const [missions, engajados] = await Promise.all([
+    competitionService.listMissions(req.user),
+    competitionService.getUserMissionRanking().catch(() => []),
+  ]);
+  res.json({ missions, engajados });
 });
 
 const createMission = asyncHandler(async (req, res) => {
@@ -55,9 +58,33 @@ const updateMission = asyncHandler(async (req, res) => {
   const capaFile = pickFile(files, 'imagem_capa') || req.file || null;
   const imagemCapa = capaFile
     ? (await persistMedia(capaFile)).url
-    : req.body.imagem_capa;
+    : req.body.imagem_capa || undefined;
+
+  let perguntas = req.body.perguntas;
+  if (typeof perguntas === 'string' && perguntas.trim()) {
+    try {
+      perguntas = JSON.parse(perguntas);
+    } catch (_error) {
+      throw new AppError('Formato inválido das perguntas do quiz.', 400);
+    }
+  }
+  if (Array.isArray(perguntas)) {
+    for (let i = 0; i < perguntas.length; i += 1) {
+      const midiaFile = pickFile(files, `pergunta_midia_${i}`);
+      if (midiaFile) {
+        const saved = await persistMedia(midiaFile);
+        perguntas[i] = {
+          ...perguntas[i],
+          midia_url: saved.url,
+          midia_tipo: saved.kind,
+        };
+      }
+    }
+  }
+
   const mission = await competitionService.updateMission(req.params.id, {
     ...req.body,
+    perguntas: Array.isArray(perguntas) ? perguntas : undefined,
     imagem_capa: imagemCapa,
   });
   res.json(mission);

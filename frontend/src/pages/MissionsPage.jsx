@@ -60,6 +60,28 @@ function windowLabel(mission) {
   return 'No prazo';
 }
 
+function toDatetimeLocalValue(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function emptyFormState() {
+  return {
+    titulo: '',
+    descricao: '',
+    pontuacao: 10,
+    data_inicio: '',
+    data_fim: '',
+    tipo: 'FOTO',
+    quiz_modo_pontuacao: 'PROPORCIONAL',
+    quiz_tempo_segundos: '',
+    quiz_dificuldade: 'MEDIO',
+  };
+}
+
 function QuestionMedia({ midiaUrl, midiaTipo }) {
   if (!midiaUrl) return null;
   const src = resolveMediaUrl(midiaUrl);
@@ -89,20 +111,11 @@ function QuestionMedia({ midiaUrl, midiaTipo }) {
 function MissionsPage() {
   const { isAdmin } = useAuth();
   const [missions, setMissions] = useState([]);
-  const [form, setForm] = useState({
-    titulo: '',
-    descricao: '',
-    pontuacao: 10,
-    data_inicio: '',
-    data_fim: '',
-    tipo: 'FOTO',
-    quiz_modo_pontuacao: 'PROPORCIONAL',
-    quiz_tempo_segundos: '',
-    quiz_dificuldade: 'MEDIO',
-  });
+  const [form, setForm] = useState(emptyFormState());
   const [perguntas, setPerguntas] = useState([emptyQuestion()]);
   const [capaFile, setCapaFile] = useState(null);
   const [capaFileName, setCapaFileName] = useState('');
+  const [editingMissionId, setEditingMissionId] = useState(null);
   const [submissionFiles, setSubmissionFiles] = useState({});
   const [activeQuizId, setActiveQuizId] = useState(null);
   const [quizData, setQuizData] = useState(null);
@@ -118,13 +131,43 @@ function MissionsPage() {
 
   const loadMissions = async () => {
     const { data } = await http.get('/competition/missions');
-    setMissions(data);
+    if (Array.isArray(data)) {
+      setMissions(data);
+      return;
+    }
+    setMissions(Array.isArray(data?.missions) ? data.missions : []);
+    if (Array.isArray(data?.engajados) && data.engajados.length) {
+      setUserRanking(data.engajados);
+    }
   };
 
   const loadUserRanking = async () => {
     try {
       const { data } = await http.get('/competition/ranking/users');
-      setUserRanking(Array.isArray(data) ? data : []);
+      const list = Array.isArray(data) ? data : data?.ranking || data?.items || [];
+      if (list.length) {
+        setUserRanking(list);
+        return;
+      }
+    } catch {
+      // tenta fallback abaixo
+    }
+
+    // Fallback admin: usa lista de usuários com avatar
+    try {
+      const { data } = await http.get('/users');
+      const participants = (Array.isArray(data) ? data : [])
+        .filter((u) => String(u.role).toUpperCase() === 'PARTICIPANTE' && u.equipe_id)
+        .slice(0, 10)
+        .map((u, index) => ({
+          usuario_id: u.id,
+          usuario_nome: u.nome,
+          usuario_foto: u.foto,
+          equipe_id: u.equipe_id,
+          equipe_nome: u.equipe_nome,
+          posicao: index + 1,
+        }));
+      setUserRanking(participants);
     } catch {
       setUserRanking([]);
     }
@@ -166,6 +209,73 @@ function MissionsPage() {
     return () => clearInterval(id);
   }, [quizData]);
 
+  const resetMissionForm = () => {
+    setEditingMissionId(null);
+    setForm(emptyFormState());
+    setCapaFile(null);
+    setCapaFileName('');
+    setPerguntas([emptyQuestion()]);
+  };
+
+  const startEditMission = async (mission) => {
+    setEditingMissionId(mission.id);
+    setForm({
+      titulo: mission.titulo || '',
+      descricao: mission.descricao || '',
+      pontuacao: mission.pontuacao ?? 10,
+      data_inicio: toDatetimeLocalValue(mission.data_inicio),
+      data_fim: toDatetimeLocalValue(mission.data_fim),
+      tipo: mission.tipo || 'FOTO',
+      quiz_modo_pontuacao: mission.quiz_modo_pontuacao || 'PROPORCIONAL',
+      quiz_tempo_segundos: mission.quiz_tempo_segundos || '',
+      quiz_dificuldade: mission.quiz_dificuldade || 'MEDIO',
+    });
+    setCapaFile(null);
+    setCapaFileName('');
+    setPerguntas([emptyQuestion()]);
+
+    if (mission.tipo === 'QUIZ') {
+      try {
+        const { data } = await http.get(`/competition/missions/${mission.id}/quiz`);
+        const loaded = (data.perguntas || []).map((pergunta) => ({
+          enunciado: pergunta.enunciado || '',
+          midiaFile: null,
+          midiaPreview: pergunta.midia_url || '',
+          midia_url: pergunta.midia_url || '',
+          midia_tipo: pergunta.midia_tipo || '',
+          alternativas: (pergunta.alternativas || []).map((alt) => ({
+            texto: alt.texto || '',
+            correta: Boolean(alt.correta),
+          })),
+        }));
+        setPerguntas(loaded.length ? loaded : [emptyQuestion()]);
+      } catch (error) {
+        alert(
+          error?.response?.data?.message ||
+            'Não foi possível carregar as perguntas do quiz.'
+        );
+      }
+    }
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const deleteMission = async (mission) => {
+    const ok = window.confirm(
+      `Eliminar a missão "${mission.titulo}"? Esta ação não pode ser desfeita.`
+    );
+    if (!ok) return;
+    try {
+      await http.delete(`/competition/missions/${mission.id}`);
+      if (editingMissionId === mission.id) resetMissionForm();
+      if (activeQuizId === mission.id) closeQuiz();
+      await loadMissions();
+      await loadUserRanking();
+    } catch (error) {
+      alert(error?.response?.data?.message || 'Não foi possível eliminar a missão.');
+    }
+  };
+
   const createMission = async (event) => {
     event.preventDefault();
     setCreating(true);
@@ -179,10 +289,14 @@ function MissionsPage() {
         payload.append('imagem_capa', capaFile);
       }
       if (form.tipo === 'QUIZ') {
-        const perguntasPayload = perguntas.map(({ enunciado, alternativas }) => ({
-          enunciado,
-          alternativas,
-        }));
+        const perguntasPayload = perguntas.map(
+          ({ enunciado, alternativas, midia_url, midia_tipo, midiaFile }) => ({
+            enunciado,
+            alternativas,
+            midia_url: midiaFile ? undefined : midia_url || undefined,
+            midia_tipo: midiaFile ? undefined : midia_tipo || undefined,
+          })
+        );
         payload.append('perguntas', JSON.stringify(perguntasPayload));
         perguntas.forEach((pergunta, index) => {
           if (pergunta.midiaFile) {
@@ -190,24 +304,25 @@ function MissionsPage() {
           }
         });
       }
-      await http.post('/competition/missions', payload);
-      setForm({
-        titulo: '',
-        descricao: '',
-        pontuacao: 10,
-        data_inicio: '',
-        data_fim: '',
-        tipo: 'FOTO',
-        quiz_modo_pontuacao: 'PROPORCIONAL',
-        quiz_tempo_segundos: '',
-        quiz_dificuldade: 'MEDIO',
-      });
-      setCapaFile(null);
-      setCapaFileName('');
-      setPerguntas([emptyQuestion()]);
+
+      if (editingMissionId) {
+        // Garante envio do tempo mesmo quando vazio (limpar limite)
+        if (form.tipo === 'QUIZ' && form.quiz_tempo_segundos === '') {
+          payload.append('quiz_tempo_segundos', '');
+        }
+        await http.put(`/competition/missions/${editingMissionId}`, payload);
+      } else {
+        await http.post('/competition/missions', payload);
+      }
+      resetMissionForm();
       await loadMissions();
     } catch (error) {
-      alert(error?.response?.data?.message || 'Não foi possível criar a missão.');
+      alert(
+        error?.response?.data?.message ||
+          (editingMissionId
+            ? 'Não foi possível atualizar a missão.'
+            : 'Não foi possível criar a missão.')
+      );
     } finally {
       setCreating(false);
     }
@@ -393,20 +508,16 @@ function MissionsPage() {
       <header>
         <h2 className="text-2xl font-semibold text-zinc-900">Missões</h2>
         {userRanking.length ? (
-          <div className="mt-3" aria-label="Mais engajados">
+          <div className="mt-3" aria-label="10 mais engajados">
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
-              Mais engajados
+              10 mais engajados
             </p>
-            <div className="flex items-center overflow-x-auto pb-1">
-              {userRanking.map((row, index) => (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {userRanking.map((row) => (
                 <div
                   key={row.usuario_id}
                   title={`#${row.posicao} ${row.usuario_nome}`}
-                  className="relative shrink-0"
-                  style={{
-                    marginLeft: index === 0 ? 0 : -10,
-                    zIndex: userRanking.length - index,
-                  }}
+                  className="relative h-11 w-11 shrink-0"
                 >
                   <UserAvatar
                     foto={row.usuario_foto}
@@ -424,7 +535,7 @@ function MissionsPage() {
           </div>
         ) : (
           <p className="mt-2 text-xs text-zinc-500">
-            Os avatares dos mais engajados aparecem aqui conforme a participação.
+            Cadastre participantes nas equipes para ver os mais engajados.
           </p>
         )}
         <p className="mt-2 text-sm text-zinc-500">
@@ -439,11 +550,26 @@ function MissionsPage() {
               className="ig-card grid gap-2 p-4 sm:grid-cols-2 xl:grid-cols-3"
               onSubmit={createMission}
             >
+              {editingMissionId ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2 xl:col-span-3">
+                  <p className="text-sm font-semibold text-zinc-800">
+                    Editando missão #{editingMissionId}
+                  </p>
+                  <button
+                    type="button"
+                    className="bg-transparent p-0 text-sm text-zinc-500 hover:underline"
+                    onClick={resetMissionForm}
+                  >
+                    Cancelar edição
+                  </button>
+                </div>
+              ) : null}
               <label className="grid gap-1 text-sm font-medium text-zinc-700">
                 Tipo da missão
                 <select
                   className="ig-input"
                   value={form.tipo}
+                  disabled={Boolean(editingMissionId)}
                   onChange={(e) => {
                     setForm((s) => ({ ...s, tipo: e.target.value }));
                     setCapaFile(null);
@@ -703,7 +829,13 @@ function MissionsPage() {
                 className="ig-button sm:col-span-2 xl:col-span-1"
                 disabled={creating}
               >
-                {creating ? 'Criando...' : 'Criar Missão'}
+                {creating
+                  ? editingMissionId
+                    ? 'Salvando...'
+                    : 'Criando...'
+                  : editingMissionId
+                    ? 'Salvar alterações'
+                    : 'Criar Missão'}
               </button>
             </form>
           ) : null}
@@ -764,6 +896,22 @@ function MissionsPage() {
 
                 {isAdmin ? (
                   <div className="grid gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        className="rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm font-medium text-zinc-700"
+                        type="button"
+                        onClick={() => startEditMission(mission)}
+                      >
+                        Editar
+                      </button>
+                      <button
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700"
+                        type="button"
+                        onClick={() => deleteMission(mission)}
+                      >
+                        Eliminar
+                      </button>
+                    </div>
                     <button
                       className="ig-button"
                       type="button"

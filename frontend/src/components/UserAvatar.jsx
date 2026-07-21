@@ -13,20 +13,21 @@ function UserAvatar({
   const imageUrl = resolveAvatarImageUrl(foto);
   const teamStyle = getTeamStylesByLabel(equipeNome, 'AMARELO');
   const initials = (nome || 'U').trim().charAt(0).toUpperCase();
+  const frameClass = `inline-grid shrink-0 ${sizeClass} place-items-center overflow-hidden rounded-full ${ringClass}`;
 
   if (imageUrl) {
     return (
       <img
         src={imageUrl}
         alt={nome ? `Avatar de ${nome}` : 'Avatar'}
-        className={`${sizeClass} rounded-full object-cover ${ringClass}`}
+        className={`${frameClass} object-cover`}
       />
     );
   }
 
   if (presetId) {
     return (
-      <span className={`${sizeClass} overflow-hidden rounded-full ${ringClass}`}>
+      <span className={frameClass} title={nome || undefined}>
         <CartoonAnimalAvatar animalId={presetId} className="h-full w-full" />
       </span>
     );
@@ -34,7 +35,8 @@ function UserAvatar({
 
   return (
     <span
-      className={`grid ${sizeClass} place-items-center rounded-full text-sm font-semibold text-white ${teamStyle.bg} ${ringClass}`}
+      className={`${frameClass} text-sm font-semibold text-white ${teamStyle.bg}`}
+      title={nome || undefined}
     >
       {initials}
     </span>

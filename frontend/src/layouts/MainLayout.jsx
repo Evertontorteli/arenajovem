@@ -141,7 +141,12 @@ function MainLayout() {
       try {
         const { data } = await http.get('/competition/missions');
         if (!cancelled) {
-          setOpenMissionsCount(countActionableMissions(Array.isArray(data) ? data : []));
+          const missions = Array.isArray(data)
+            ? data
+            : Array.isArray(data?.missions)
+              ? data.missions
+              : [];
+          setOpenMissionsCount(countActionableMissions(missions));
         }
       } catch (_error) {
         if (!cancelled) setOpenMissionsCount(0);

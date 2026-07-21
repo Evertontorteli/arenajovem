@@ -154,12 +154,50 @@ async function createMission(data) {
   });
 }
 
-function updateMission(id, data) {
-  return competitionRepository.updateMission(id, data);
+async function updateMission(id, data) {
+  await quizRepository.ensureQuizSchema();
+  const existing = await competitionRepository.findMissionById(id);
+  if (!existing) throw new AppError('Missão não encontrada.', 404);
+
+  let perguntas = data.perguntas;
+  if (typeof perguntas === 'string' && perguntas.trim()) {
+    try {
+      perguntas = JSON.parse(perguntas);
+    } catch (_error) {
+      throw new AppError('Formato inválido das perguntas do quiz.', 400);
+    }
+  }
+
+  if (Array.isArray(perguntas)) {
+    if (existing.tipo === 'QUIZ' || data.tipo === 'QUIZ') {
+      validateQuizPerguntas(perguntas);
+    }
+  }
+
+  try {
+    return await competitionRepository.updateMission(id, {
+      ...data,
+      perguntas: Array.isArray(perguntas) ? perguntas : undefined,
+      quiz_modo_pontuacao:
+        data.quiz_modo_pontuacao === 'TUDO_OU_NADA'
+          ? 'TUDO_OU_NADA'
+          : data.quiz_modo_pontuacao === 'PROPORCIONAL'
+            ? 'PROPORCIONAL'
+            : data.quiz_modo_pontuacao,
+      quiz_dificuldade: data.quiz_dificuldade,
+      quiz_tempo_segundos: data.quiz_tempo_segundos,
+    });
+  } catch (error) {
+    if (error.status) throw new AppError(error.message, error.status);
+    throw error;
+  }
 }
 
-function deleteMission(id) {
-  return competitionRepository.deleteMission(id);
+async function deleteMission(id) {
+  const existing = await competitionRepository.findMissionById(id);
+  if (!existing) throw new AppError('Missão não encontrada.', 404);
+  await competitionRepository.deleteMission(id);
+  return { ok: true };
 }
 
 async function updateMissionStatus(id, status, userId) {
