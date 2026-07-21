@@ -60,7 +60,7 @@ function TeamSelectionPage() {
   };
 
   return (
-    <div className="grid min-h-screen place-items-center bg-zinc-50 p-5">
+    <div className="grid min-h-[var(--app-height,100dvh)] place-items-center bg-zinc-50 p-5 pt-[max(1.25rem,env(safe-area-inset-top))] pb-[max(1.25rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-[560px]">
         <form className="ig-card grid gap-4 px-6 py-7" onSubmit={handleSaveTeam}>
           <div>

@@ -1,10 +1,20 @@
 @import "tailwindcss";
 
 @layer base {
+  :root {
+    --app-height: 100dvh;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --mobile-header-height: calc(3.5rem + var(--safe-top));
+    --mobile-nav-height: calc(3.5rem + var(--safe-bottom));
+  }
+
   html,
   body,
   #root {
-    @apply min-h-screen;
+    min-height: 100%;
+    min-height: 100dvh;
+    min-height: var(--app-height);
   }
 
   html {
@@ -106,7 +116,31 @@
   html,
   body,
   #root {
-    height: 100%;
+    height: var(--app-height, 100dvh);
+    max-height: var(--app-height, 100dvh);
     overflow: hidden;
+  }
+
+  #root {
+    display: flex;
+    flex-direction: column;
+    position: relative;
+    top: var(--vv-offset-top, 0px);
+  }
+}
+
+@media (min-width: 1024px) {
+  html,
+  body,
+  #root {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+
+  #root {
+    display: block;
+    position: static;
+    top: auto;
   }
 }

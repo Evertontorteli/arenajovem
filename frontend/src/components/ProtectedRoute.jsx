@@ -6,7 +6,7 @@ function ProtectedRoute({ children, adminOnly = false }) {
 
   if (loading) {
     return (
-      <div className="grid min-h-screen place-items-center text-sm text-zinc-500">
+      <div className="grid min-h-[var(--app-height,100dvh)] place-items-center text-sm text-zinc-500">
         Carregando...
       </div>
     );

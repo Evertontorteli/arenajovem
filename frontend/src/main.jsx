@@ -3,7 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { HashRouter } from 'react-router-dom';
 import App from './App.jsx';
 import { AuthProvider } from './contexts/AuthContext';
+import { startAppHeightSync } from './utils/iosViewport';
 import './index.css';
+
+startAppHeightSync();
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>

@@ -120,12 +120,12 @@ function MainLayout() {
 
   return (
     <div
-      className={`grid h-full min-h-screen transition-[grid-template-columns] duration-200 ${
+      className={`grid h-[var(--app-height,100dvh)] min-h-0 transition-[grid-template-columns] duration-200 lg:h-auto lg:min-h-screen ${
         desktopSidebarOpen ? 'lg:grid-cols-[245px_1fr]' : 'lg:grid-cols-[0px_1fr]'
       }`}
     >
       <aside
-        className={`hide-on-mobile sticky top-0 h-screen flex-col gap-4 overflow-hidden border-r border-zinc-300 bg-white transition-all duration-200 lg:flex ${
+        className={`hide-on-mobile sticky top-0 h-screen flex-col gap-4 self-start overflow-hidden border-r border-zinc-300 bg-white transition-all duration-200 lg:flex ${
           desktopSidebarOpen
             ? 'w-[245px] p-3 opacity-100'
             : 'pointer-events-none w-0 border-0 p-0 opacity-0'
@@ -202,8 +202,14 @@ function MainLayout() {
         </div>
       ) : null}
 
-      <div className="flex h-dvh min-w-0 flex-col overflow-hidden lg:h-auto lg:min-h-screen lg:overflow-visible">
-        <header className="z-20 grid h-14 shrink-0 grid-cols-[40px_1fr_40px] items-center bg-white px-4 shadow-[0_4px_12px_rgba(0,0,0,0.08)] lg:hidden">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:min-h-screen lg:overflow-visible">
+        <header
+          className="z-20 grid shrink-0 grid-cols-[40px_1fr_40px] items-center bg-white px-4 shadow-[0_4px_12px_rgba(0,0,0,0.08)] lg:hidden"
+          style={{
+            height: 'var(--mobile-header-height)',
+            paddingTop: 'var(--safe-top)',
+          }}
+        >
           {isFeedRoute ? (
             <button
               type="button"
@@ -232,7 +238,7 @@ function MainLayout() {
             />
           </Link>
         </header>
-        <main className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto px-3 py-5 lg:overflow-visible lg:px-6 lg:py-8">
+        <main className="mx-auto min-h-0 w-full max-w-6xl flex-1 overflow-y-auto overscroll-contain px-3 py-5 lg:overflow-visible lg:px-6 lg:py-8">
           {showAdminNavTabs ? (
             <div className="mb-4">
               <AdminNavTabs />
@@ -241,7 +247,11 @@ function MainLayout() {
           <Outlet />
         </main>
         <nav
-          className={`z-30 grid h-14 shrink-0 ${mobileNavGridClass} border-t border-zinc-300 bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.08)] lg:hidden`}
+          className={`z-30 grid shrink-0 ${mobileNavGridClass} border-t border-zinc-300 bg-white shadow-[0_-4px_12px_rgba(0,0,0,0.08)] lg:hidden`}
+          style={{
+            height: 'var(--mobile-nav-height)',
+            paddingBottom: 'var(--safe-bottom)',
+          }}
         >
           {mobileMenuItems.map((item, index) => (
             <NavLink
