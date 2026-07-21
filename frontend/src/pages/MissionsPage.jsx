@@ -102,6 +102,8 @@ function MissionsPage() {
   const [quizError, setQuizError] = useState('');
   const [creating, setCreating] = useState(false);
   const [secondsLeft, setSecondsLeft] = useState(null);
+  /** 0 = intro, 1..N = pergunta, 'confirm' = revisão final */
+  const [quizStep, setQuizStep] = useState(0);
 
   const loadMissions = async () => {
     const { data } = await http.get('/competition/missions');
@@ -208,17 +210,55 @@ function MissionsPage() {
     setQuizError('');
     setQuizMessage('');
     setQuizAnswers({});
+    setQuizStep(0);
     try {
       const { data } = await http.get(`/competition/missions/${missionId}/quiz`);
       setQuizData(data);
       if (data.minha_tentativa) {
+        setQuizStep('done');
         setQuizMessage(
           `Resultado: ${data.minha_tentativa.acertos}/${data.minha_tentativa.total_perguntas} · ${data.minha_tentativa.pontos_obtidos} pts · ${formatDuration(data.minha_tentativa.duracao_ms)}`
         );
+      } else if (data.sessao?.iniciado_em) {
+        // Já iniciou antes — retoma nas perguntas (timer continua).
+        setQuizStep(1);
+      } else {
+        setQuizStep(0);
       }
     } catch (error) {
       setQuizError(error?.response?.data?.message || 'Não foi possível abrir o quiz.');
       setQuizData(null);
+    } finally {
+      setQuizLoading(false);
+    }
+  };
+
+  const beginQuiz = async () => {
+    if (!activeQuizId) return;
+    setQuizError('');
+    setQuizLoading(true);
+    try {
+      const { data } = await http.post(
+        `/competition/missions/${activeQuizId}/quiz/start`
+      );
+      setQuizData((prev) =>
+        prev
+          ? {
+              ...prev,
+              sessao: data.sessao || prev.sessao,
+            }
+          : prev
+      );
+      setQuizStep(1);
+    } catch (error) {
+      // Admin sem equipe pode só pré-visualizar.
+      if (isAdmin) {
+        setQuizStep(1);
+      } else {
+        setQuizError(
+          error?.response?.data?.message || 'Não foi possível iniciar o quiz.'
+        );
+      }
     } finally {
       setQuizLoading(false);
     }
@@ -236,6 +276,7 @@ function MissionsPage() {
     }));
     if (respostas.some((r) => !r.alternativa_id)) {
       setQuizError('Responda todas as perguntas antes de enviar.');
+      setQuizStep(1);
       return;
     }
     setQuizLoading(true);
@@ -246,6 +287,7 @@ function MissionsPage() {
         { respostas }
       );
       setQuizMessage(data.message);
+      setQuizStep('done');
       setQuizData((prev) =>
         prev
           ? {
@@ -269,6 +311,21 @@ function MissionsPage() {
       setQuizLoading(false);
     }
   };
+
+  const getAnswerLabel = (pergunta) => {
+    const selectedId = quizAnswers[pergunta.id];
+    if (!selectedId) return 'Sem resposta';
+    const alt = pergunta.alternativas.find(
+      (item) => Number(item.id) === Number(selectedId)
+    );
+    return alt?.texto || 'Sem resposta';
+  };
+
+  const totalQuizQuestions = quizData?.perguntas?.length || 0;
+  const currentQuestion =
+    typeof quizStep === 'number' && quizStep >= 1
+      ? quizData?.perguntas?.[quizStep - 1]
+      : null;
 
   const updatePergunta = (index, patch) => {
     setPerguntas((list) =>
@@ -710,7 +767,7 @@ function MissionsPage() {
           </div>
 
           {activeQuizId ? (
-            <div className="ig-card grid gap-3 border-zinc-300 p-4">
+            <div className="ig-card grid gap-4 border-zinc-300 p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <h3 className="text-base font-semibold text-zinc-900">
@@ -734,6 +791,8 @@ function MissionsPage() {
                     setQuizData(null);
                     setQuizError('');
                     setQuizMessage('');
+                    setQuizStep(0);
+                    setQuizAnswers({});
                   }}
                 >
                   Fechar
@@ -754,60 +813,218 @@ function MissionsPage() {
                 <p className="text-sm text-zinc-500">Carregando...</p>
               ) : null}
               {quizError ? <p className="text-sm text-rose-500">{quizError}</p> : null}
-              {quizMessage ? (
+              {quizMessage && quizStep === 'done' ? (
                 <p className="text-sm text-emerald-700">{quizMessage}</p>
               ) : null}
 
-              {!quizData?.minha_tentativa
-                ? quizData?.perguntas?.map((pergunta, index) => (
-                    <fieldset key={pergunta.id} className="grid gap-2">
-                      <legend className="text-sm font-medium text-zinc-800">
-                        {index + 1}. {pergunta.enunciado}
-                      </legend>
-                      <QuestionMedia
-                        midiaUrl={pergunta.midia_url}
-                        midiaTipo={pergunta.midia_tipo}
-                      />
-                      {pergunta.alternativas.map((alt) => (
-                        <label
-                          key={alt.id}
-                          className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                        >
-                          <input
-                            type="radio"
-                            name={`quiz-${pergunta.id}`}
-                            disabled={quizLoading || secondsLeft === 0}
-                            checked={Number(quizAnswers[pergunta.id]) === Number(alt.id)}
-                            onChange={() =>
-                              setQuizAnswers((state) => ({
-                                ...state,
-                                [pergunta.id]: alt.id,
-                              }))
-                            }
-                          />
-                          <span>{alt.texto}</span>
-                          {isAdmin && alt.correta ? (
-                            <span className="ml-auto text-xs text-emerald-600">correta</span>
-                          ) : null}
-                        </label>
-                      ))}
-                    </fieldset>
-                  ))
-                : null}
-
               {!quizData?.minha_tentativa && quizData?.perguntas?.length ? (
-                <button
-                  type="button"
-                  className="ig-button"
-                  disabled={quizLoading || secondsLeft === 0}
-                  onClick={submitQuiz}
-                >
-                  {quizLoading
-                    ? 'Enviando...'
-                    : secondsLeft === 0
-                      ? 'Tempo esgotado'
-                      : 'Enviar respostas (1 tentativa)'}
-                </button>
+                <>
+                  {quizStep === 0 ? (
+                    <div className="grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50 p-4">
+                      <p className="text-sm font-semibold text-zinc-900">Antes de começar</p>
+                      <ul className="list-disc space-y-1.5 pl-5 text-sm text-zinc-700">
+                        <li>
+                          São {totalQuizQuestions} pergunta
+                          {totalQuizQuestions === 1 ? '' : 's'} — uma por vez.
+                        </li>
+                        <li>
+                          Você tem <strong>apenas 1 tentativa</strong>. Depois de enviar, não
+                          dá para mudar.
+                        </li>
+                        {quizData.missao?.quiz_tempo_segundos ? (
+                          <li>
+                            Há limite de {quizData.missao.quiz_tempo_segundos}s no
+                            total. O cronômetro começa ao clicar em{' '}
+                            <strong>Começar quiz</strong>.
+                          </li>
+                        ) : (
+                          <li>Não há limite de tempo neste quiz.</li>
+                        )}
+                        <li>
+                          No final você verá um resumo e precisará confirmar o envio.
+                        </li>
+                      </ul>
+                      <button
+                        type="button"
+                        className="ig-button"
+                        disabled={quizLoading}
+                        onClick={() => {
+                          if (quizData.sessao?.iniciado_em) {
+                            setQuizError('');
+                            setQuizStep(1);
+                            return;
+                          }
+                          beginQuiz();
+                        }}
+                      >
+                        {quizLoading
+                          ? 'Iniciando...'
+                          : quizData.sessao?.iniciado_em
+                            ? 'Continuar quiz'
+                            : 'Começar quiz'}
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {currentQuestion ? (
+                    <div className="grid gap-3">
+                      <div className="flex items-center justify-between gap-2 text-xs text-zinc-500">
+                        <span>
+                          Pergunta {quizStep} de {totalQuizQuestions}
+                        </span>
+                        <span>
+                          {
+                            Object.keys(quizAnswers).filter((id) =>
+                              quizData.perguntas.some((p) => String(p.id) === String(id))
+                            ).length
+                          }{' '}
+                          respondida(s)
+                        </span>
+                      </div>
+                      <div
+                        className="h-1.5 overflow-hidden rounded-full bg-zinc-200"
+                        aria-hidden
+                      >
+                        <div
+                          className="h-full rounded-full bg-zinc-800 transition-all duration-300"
+                          style={{
+                            width: `${(quizStep / totalQuizQuestions) * 100}%`,
+                          }}
+                        />
+                      </div>
+                      <fieldset className="grid gap-2">
+                        <legend className="text-sm font-medium text-zinc-800">
+                          {quizStep}. {currentQuestion.enunciado}
+                        </legend>
+                        <QuestionMedia
+                          midiaUrl={currentQuestion.midia_url}
+                          midiaTipo={currentQuestion.midia_tipo}
+                        />
+                        {currentQuestion.alternativas.map((alt) => (
+                          <label
+                            key={alt.id}
+                            className={`flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2.5 text-sm transition ${
+                              Number(quizAnswers[currentQuestion.id]) === Number(alt.id)
+                                ? 'border-zinc-800 bg-zinc-100'
+                                : 'border-zinc-200 hover:border-zinc-400'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name={`quiz-${currentQuestion.id}`}
+                              disabled={quizLoading || secondsLeft === 0}
+                              checked={
+                                Number(quizAnswers[currentQuestion.id]) === Number(alt.id)
+                              }
+                              onChange={() =>
+                                setQuizAnswers((state) => ({
+                                  ...state,
+                                  [currentQuestion.id]: alt.id,
+                                }))
+                              }
+                            />
+                            <span>{alt.texto}</span>
+                            {isAdmin && alt.correta ? (
+                              <span className="ml-auto text-xs text-emerald-600">correta</span>
+                            ) : null}
+                          </label>
+                        ))}
+                      </fieldset>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700"
+                          onClick={() => {
+                            setQuizError('');
+                            setQuizStep(quizStep === 1 ? 0 : quizStep - 1);
+                          }}
+                        >
+                          Voltar
+                        </button>
+                        <button
+                          type="button"
+                          className="ig-button"
+                          disabled={
+                            !quizAnswers[currentQuestion.id] || secondsLeft === 0
+                          }
+                          onClick={() => {
+                            setQuizError('');
+                            if (quizStep >= totalQuizQuestions) {
+                              setQuizStep('confirm');
+                            } else {
+                              setQuizStep(quizStep + 1);
+                            }
+                          }}
+                        >
+                          {quizStep >= totalQuizQuestions
+                            ? 'Revisar respostas'
+                            : 'Próxima'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {quizStep === 'confirm' ? (
+                    <div className="grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                      <p className="text-sm font-semibold text-zinc-900">
+                        Confirme antes de enviar
+                      </p>
+                      <p className="text-sm text-zinc-700">
+                        Revise suas respostas. Depois de confirmar, a tentativa é
+                        definitiva — não será possível alterar.
+                      </p>
+                      <ul className="grid gap-2">
+                        {quizData.perguntas.map((pergunta, index) => (
+                          <li
+                            key={pergunta.id}
+                            className="rounded-lg border border-amber-100 bg-white px-3 py-2 text-sm"
+                          >
+                            <p className="font-medium text-zinc-800">
+                              {index + 1}. {pergunta.enunciado}
+                            </p>
+                            <p className="mt-0.5 text-zinc-600">
+                              Sua resposta: {getAnswerLabel(pergunta)}
+                            </p>
+                            <button
+                              type="button"
+                              className="mt-1 bg-transparent p-0 text-xs text-blue-700 hover:underline"
+                              onClick={() => {
+                                setQuizError('');
+                                setQuizStep(index + 1);
+                              }}
+                            >
+                              Alterar esta resposta
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg border border-zinc-300 bg-white px-4 py-2 text-sm font-medium text-zinc-700"
+                          onClick={() => {
+                            setQuizError('');
+                            setQuizStep(totalQuizQuestions);
+                          }}
+                        >
+                          Voltar
+                        </button>
+                        <button
+                          type="button"
+                          className="ig-button"
+                          disabled={quizLoading || secondsLeft === 0}
+                          onClick={submitQuiz}
+                        >
+                          {quizLoading
+                            ? 'Enviando...'
+                            : secondsLeft === 0
+                              ? 'Tempo esgotado'
+                              : 'Confirmar e enviar'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
 
               {quizData?.historico?.itens?.length ? (

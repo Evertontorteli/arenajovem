@@ -84,7 +84,29 @@
   }
   100% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(1.34);
+    transform: translate(-50%, -120%) scale(1.35);
+  }
+}
+
+@keyframes missionNavShake {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  15% {
+    transform: rotate(-10deg);
+  }
+  30% {
+    transform: rotate(9deg);
+  }
+  45% {
+    transform: rotate(-7deg);
+  }
+  60% {
+    transform: rotate(5deg);
+  }
+  75% {
+    transform: rotate(-3deg);
   }
 }
 

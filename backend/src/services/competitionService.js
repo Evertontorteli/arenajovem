@@ -334,8 +334,11 @@ async function getMissionQuiz(missaoId, user) {
     if (attempt) {
       historico = await quizRepository.getAttemptHistory(missaoId, user.id);
     } else if (mission.status === 'ABERTA' && user.equipe_id) {
-      assertMissionWindow(mission);
-      sessao = await quizRepository.startQuizSession(missaoId, user.id);
+      // Sessão (timer) só inicia em startMissionQuiz — aqui só lê se já existir.
+      const iniciadoEm = await quizRepository.getQuizSessionStart(missaoId, user.id);
+      if (iniciadoEm) {
+        sessao = { iniciado_em: iniciadoEm };
+      }
     }
     ranking = await quizRepository.getQuizRanking(missaoId, 15);
   }
@@ -381,6 +384,44 @@ async function getMissionQuiz(missaoId, user) {
       : null,
     historico,
     ranking,
+  };
+}
+
+async function startMissionQuiz(missaoId, user) {
+  await quizRepository.ensureQuizSchema();
+  if (!user?.equipe_id) {
+    throw new AppError('Apenas participantes de equipe podem iniciar o quiz.', 403);
+  }
+  const mission = await competitionRepository.findMissionById(missaoId);
+  if (!mission) throw new AppError('Missão não encontrada.', 404);
+  if (mission.tipo !== 'QUIZ') {
+    throw new AppError('Esta missão não é um quiz.', 400);
+  }
+  if (mission.status !== 'ABERTA') {
+    throw new AppError('Este quiz ainda não está aberto.', 400);
+  }
+  assertMissionWindow(mission);
+
+  const attempt = await quizRepository.findAttemptByUser(missaoId, user.id);
+  if (attempt) {
+    throw new AppError('Você já respondeu este quiz.', 409);
+  }
+
+  const sessao = await quizRepository.startQuizSession(missaoId, user.id);
+  const tempoLimite = Number(mission.quiz_tempo_segundos || 0) || null;
+  let tempoRestanteSegundos = null;
+  if (sessao?.iniciado_em && tempoLimite) {
+    const elapsed = Math.floor(
+      (Date.now() - new Date(sessao.iniciado_em).getTime()) / 1000
+    );
+    tempoRestanteSegundos = Math.max(0, tempoLimite - elapsed);
+  }
+
+  return {
+    sessao: {
+      iniciado_em: sessao.iniciado_em,
+      tempo_restante_segundos: tempoRestanteSegundos,
+    },
   };
 }
 
@@ -499,6 +540,7 @@ module.exports = {
   postMissionToFeed,
   submitMission,
   getMissionQuiz,
+  startMissionQuiz,
   submitMissionQuiz,
   getMissionQuizRanking,
   listMissionSubmissions,

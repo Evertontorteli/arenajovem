@@ -16,7 +16,9 @@ import AdminNavTabs from '../components/AdminNavTabs';
 import DesktopSidebarToggle from '../components/DesktopSidebarToggle';
 import UserAvatar from '../components/UserAvatar';
 import { useAuth } from '../contexts/AuthContext';
+import http from '../api/http';
 import { getTeamStylesByIndex, getTeamStylesByLabel } from '../utils/teamColors';
+import { countActionableMissions } from '../utils/missionWindow';
 
 const SIDEBAR_STORAGE_KEY = 'arena_desktop_sidebar_open';
 const adminHubRoutes = new Set(['/', '/equipes', '/perfil', '/admin']);
@@ -31,6 +33,32 @@ const menu = [
   { to: '/perfil', label: 'Perfil', icon: FaUser, permission: 'perfil' },
 ];
 
+function MissionNavIcon({ Icon, active, teamStyle, alertCount, shake, sizeClass }) {
+  const showAlert = alertCount > 0;
+  return (
+    <span
+      className={`relative grid ${sizeClass} place-items-center rounded-lg transition ${
+        active ? `${teamStyle.bg} text-white shadow-sm` : 'text-zinc-500'
+      }`}
+      style={
+        shake && showAlert && !active
+          ? { animation: 'missionNavShake 1.1s ease-in-out infinite' }
+          : undefined
+      }
+    >
+      <Icon />
+      {showAlert ? (
+        <span
+          className="absolute -right-0.5 -top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white"
+          aria-hidden
+        >
+          {alertCount > 9 ? '9+' : alertCount}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 function MainLayout() {
   const { logout, user, isAdmin, canAccess } = useAuth();
   const location = useLocation();
@@ -40,8 +68,10 @@ function MainLayout() {
     if (saved === null) return true;
     return saved === 'true';
   });
+  const [openMissionsCount, setOpenMissionsCount] = useState(0);
   const isFeedRoute = location.pathname === '/feed';
   const isProfileRoute = location.pathname === '/perfil';
+  const isMissionsRoute = location.pathname === '/missoes';
   const profileTeamStyle = getTeamStylesByLabel(user?.equipe_nome, 'AMARELO');
   const hiddenDesktopRoutes = new Set(['/', '/equipes', '/perfil']);
   const visibleMenu = menu.filter((item) => canAccess(item.permission));
@@ -97,6 +127,39 @@ function MainLayout() {
     localStorage.setItem(SIDEBAR_STORAGE_KEY, String(desktopSidebarOpen));
   }, [desktopSidebarOpen]);
 
+  const canSeeMissions = canAccess('missoes');
+
+  useEffect(() => {
+    if (!canSeeMissions) {
+      setOpenMissionsCount(0);
+      return undefined;
+    }
+
+    let cancelled = false;
+
+    const refresh = async () => {
+      try {
+        const { data } = await http.get('/competition/missions');
+        if (!cancelled) {
+          setOpenMissionsCount(countActionableMissions(Array.isArray(data) ? data : []));
+        }
+      } catch (_error) {
+        if (!cancelled) setOpenMissionsCount(0);
+      }
+    };
+
+    refresh();
+    const intervalId = setInterval(refresh, 45000);
+    const onFocus = () => refresh();
+    window.addEventListener('focus', onFocus);
+
+    return () => {
+      cancelled = true;
+      clearInterval(intervalId);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, [canSeeMissions, location.pathname, user?.id]);
+
   const getNavItemActive = (item, isActive) =>
     item.isAdminPanel ? isAdminPanelActive : isActive;
 
@@ -117,6 +180,38 @@ function MainLayout() {
     `grid place-items-center text-xl transition ${
       isActive ? 'scale-105 text-zinc-900' : 'text-zinc-500'
     }`;
+
+  const renderMissionAwareIcon = ({
+    item,
+    Icon,
+    active,
+    teamStyle,
+    sizeClass = 'h-8 w-8',
+  }) => {
+    const isMissionsItem = item.to === '/missoes';
+    if (!isMissionsItem) {
+      return (
+        <span
+          className={`grid ${sizeClass} place-items-center rounded-lg transition ${
+            active ? `${teamStyle.bg} text-white shadow-sm` : 'text-zinc-500'
+          }`}
+        >
+          <Icon />
+        </span>
+      );
+    }
+
+    return (
+      <MissionNavIcon
+        Icon={Icon}
+        active={active}
+        teamStyle={teamStyle}
+        alertCount={openMissionsCount}
+        shake={!isMissionsRoute}
+        sizeClass={sizeClass}
+      />
+    );
+  };
 
   return (
     <div
@@ -162,16 +257,19 @@ function MainLayout() {
                 const menuTeamStyle = getTeamStylesByIndex(index);
                 return (
                   <>
-                    <span
-                      className={`grid h-7 w-7 place-items-center rounded-lg text-sm transition ${
-                        active
-                          ? `${menuTeamStyle.bg} text-white shadow-sm`
-                          : 'text-zinc-600'
-                      }`}
-                    >
-                      <Icon />
-                    </span>
+                    {renderMissionAwareIcon({
+                      item,
+                      Icon,
+                      active,
+                      teamStyle: menuTeamStyle,
+                      sizeClass: 'h-7 w-7',
+                    })}
                     <span>{item.label}</span>
+                    {item.to === '/missoes' && openMissionsCount > 0 ? (
+                      <span className="ml-auto rounded-full bg-rose-500 px-1.5 text-[10px] font-bold text-white">
+                        {openMissionsCount > 9 ? '9+' : openMissionsCount}
+                      </span>
+                    ) : null}
                   </>
                 );
               }}
@@ -258,7 +356,11 @@ function MainLayout() {
               key={`mobile-${item.to}`}
               to={item.to}
               end
-              aria-label={item.label}
+              aria-label={
+                item.to === '/missoes' && openMissionsCount > 0
+                  ? `Missões, ${openMissionsCount} liberada(s)`
+                  : item.label
+              }
               className={({ isActive }) =>
                 mobileNavClass({ isActive: getNavItemActive(item, isActive) })
               }
@@ -267,17 +369,12 @@ function MainLayout() {
                 const Icon = item.icon;
                 const active = getNavItemActive(item, isActive);
                 const menuTeamStyle = getTeamStylesByIndex(index);
-                return (
-                  <span
-                    className={`grid h-8 w-8 place-items-center rounded-lg transition ${
-                      active
-                        ? `${menuTeamStyle.bg} text-white shadow-sm`
-                        : 'text-zinc-500'
-                    }`}
-                  >
-                    <Icon />
-                  </span>
-                );
+                return renderMissionAwareIcon({
+                  item,
+                  Icon,
+                  active,
+                  teamStyle: menuTeamStyle,
+                });
               }}
             </NavLink>
           ))}

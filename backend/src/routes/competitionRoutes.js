@@ -43,6 +43,11 @@ router.get(
   competitionController.getMissionQuiz
 );
 router.post(
+  '/missions/:id/quiz/start',
+  requireRole('PARTICIPANTE', 'ADMIN'),
+  competitionController.startMissionQuiz
+);
+router.post(
   '/missions/:id/quiz/submit',
   requireRole('PARTICIPANTE', 'ADMIN'),
   competitionController.submitMissionQuiz

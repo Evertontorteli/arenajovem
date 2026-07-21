@@ -115,6 +115,11 @@ const getMissionQuiz = asyncHandler(async (req, res) => {
   res.json(quiz);
 });
 
+const startMissionQuiz = asyncHandler(async (req, res) => {
+  const result = await competitionService.startMissionQuiz(req.params.id, req.user);
+  res.json(result);
+});
+
 const submitMissionQuiz = asyncHandler(async (req, res) => {
   const result = await competitionService.submitMissionQuiz({
     missaoId: req.params.id,
@@ -201,6 +206,7 @@ module.exports = {
   postMissionToFeed,
   submitMission,
   getMissionQuiz,
+  startMissionQuiz,
   submitMissionQuiz,
   getMissionQuizRanking,
   listMissionSubmissions,
