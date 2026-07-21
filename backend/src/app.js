@@ -7,7 +7,10 @@ const routes = require('./routes');
 const errorMiddleware = require('./middlewares/errorMiddleware');
 const setupSwagger = require('./config/swagger');
 
-dotenv.config();
+dotenv.config({
+  path: path.join(__dirname, '../.env'),
+  override: true,
+});
 
 const app = express();
 

@@ -15,8 +15,31 @@ const loginLimiter = rateLimit({
   },
 });
 
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    message: 'Muitas solicitações de recuperação. Tente novamente em alguns minutos.',
+  },
+});
+
+const verifyResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: {
+    message: 'Muitas tentativas. Tente novamente em alguns minutos.',
+  },
+});
+
 router.post('/login', loginLimiter, authController.login);
 router.post('/signup', loginLimiter, authController.signup);
 router.post('/register', requireAuth, requireRole('ADMIN'), authController.register);
+router.post('/forgot-password', forgotPasswordLimiter, authController.forgotPassword);
+router.post('/verify-reset-code', verifyResetLimiter, authController.verifyResetCode);
+router.post('/reset-password', verifyResetLimiter, authController.resetPassword);
 
 module.exports = router;

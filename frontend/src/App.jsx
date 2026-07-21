@@ -14,12 +14,14 @@ import ProfilePage from './pages/ProfilePage';
 import AdminPage from './pages/AdminPage';
 import TeamSelectionPage from './pages/TeamSelectionPage';
 import RegisterPage from './pages/RegisterPage';
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
 
 function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/cadastro" element={<RegisterPage />} />
+      <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
       <Route
         path="/escolher-time"
         element={

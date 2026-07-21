@@ -76,13 +76,12 @@ function LoginPage() {
           <button className="ig-button w-full" type="submit" disabled={loading}>
             {loading ? 'Entrando...' : 'Entrar'}
           </button>
-          <a
-            href="#"
-            onClick={(e) => e.preventDefault()}
+          <Link
+            to="/esqueci-senha"
             className="mt-1 text-center text-xs text-blue-900 hover:underline"
           >
             Esqueceu a senha?
-          </a>
+          </Link>
         </form>
         <div className="ig-card mt-3 px-3 py-4 text-center text-sm">
           Não tem uma conta?{' '}

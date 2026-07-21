@@ -2,7 +2,9 @@ const bcrypt = require('bcryptjs');
 const AppError = require('../utils/AppError');
 const authRepository = require('../repositories/authRepository');
 const userRepository = require('../repositories/userRepository');
+const passwordResetRepository = require('../repositories/passwordResetRepository');
 const { generateToken } = require('../utils/jwt');
+const { sendPasswordResetCode } = require('../utils/sendEmail');
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -141,9 +143,102 @@ async function login({ email, contato, senha }) {
   return await buildAuthResponse(user);
 }
 
+const GENERIC_FORGOT_MESSAGE =
+  'Se este e-mail estiver cadastrado, enviamos um código de verificação.';
+
+async function requestPasswordReset({ email }) {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !normalized.includes('@')) {
+    throw new AppError('Informe um e-mail válido.', 400);
+  }
+
+  const user = await authRepository.findUserByEmail(normalized);
+  if (!user) {
+    return { ok: true, message: GENERIC_FORGOT_MESSAGE };
+  }
+
+  const reset = await passwordResetRepository.createResetCode({
+    usuarioId: user.id,
+    email: normalized,
+    ttlMinutes: 15,
+  });
+
+  await sendPasswordResetCode({
+    to: normalized,
+    nome: user.nome,
+    codigo: reset.codigo,
+  });
+
+  return {
+    ok: true,
+    message: GENERIC_FORGOT_MESSAGE,
+    ...(process.env.NODE_ENV !== 'production' && !process.env.RESEND_API_KEY
+      ? { devCode: reset.codigo }
+      : {}),
+  };
+}
+
+async function assertValidResetCode(email, codigo) {
+  const normalized = normalizeEmail(email);
+  if (!normalized || !normalized.includes('@')) {
+    throw new AppError('Informe um e-mail válido.', 400);
+  }
+  const code = String(codigo || '').trim();
+  if (!/^\d{6}$/.test(code)) {
+    throw new AppError('Informe o código de 6 dígitos.', 400);
+  }
+
+  const active = await passwordResetRepository.findActiveResetByEmail(normalized);
+  if (!active) {
+    throw new AppError('Código inválido ou expirado. Solicite um novo.', 400);
+  }
+  if (Number(active.tentativas) >= 5) {
+    await passwordResetRepository.markUsed(active.id);
+    throw new AppError('Muitas tentativas inválidas. Solicite um novo código.', 429);
+  }
+
+  if (!passwordResetRepository.matchesCode(active, code)) {
+    await passwordResetRepository.incrementAttempts(active.id);
+    throw new AppError('Código inválido.', 400);
+  }
+
+  return { normalized, code, active };
+}
+
+async function verifyPasswordResetCode({ email, codigo }) {
+  await assertValidResetCode(email, codigo);
+  return { ok: true, message: 'Código validado. Defina sua nova senha.' };
+}
+
+async function resetPasswordWithCode({
+  email,
+  codigo,
+  senhaNova,
+  confirmarSenha,
+}) {
+  if (!senhaNova || String(senhaNova).length < 6) {
+    throw new AppError('A nova senha deve ter pelo menos 6 caracteres.', 400);
+  }
+  if (senhaNova !== confirmarSenha) {
+    throw new AppError('A confirmação da nova senha não confere.', 400);
+  }
+
+  const { normalized, active } = await assertValidResetCode(email, codigo);
+
+  const senhaHash = await bcrypt.hash(String(senhaNova), 10);
+  await userRepository.updatePassword(active.usuario_id, senhaHash);
+  await passwordResetRepository.markUsed(active.id);
+  await passwordResetRepository.invalidateActiveCodes(normalized);
+
+  return { ok: true, message: 'Senha redefinida com sucesso. Faça login.' };
+}
+
 module.exports = {
   register,
   signup,
   login,
   normalizePhone,
+  requestPasswordReset,
+  verifyPasswordResetCode,
+  resetPasswordWithCode,
 };
