@@ -35,6 +35,18 @@ async function ensureDefaultTeams() {
       });
     }
   }
+
+  // Remove equipe Rosa (legado) — mantém apenas as 4 equipes padrão.
+  const rosaTeams = await query(
+    `SELECT id FROM equipes
+     WHERE LOWER(nome) = 'rosa'
+        OR LOWER(nome) = 'pink'
+        OR LOWER(cor) IN ('#ff00ff', '#ec4899', '#f472b6', '#db2777')`
+  );
+  for (const team of rosaTeams) {
+    await query('UPDATE usuarios SET equipe_id = NULL WHERE equipe_id = ?', [team.id]);
+    await teamRepository.removeTeam(team.id);
+  }
 }
 
 module.exports = {
