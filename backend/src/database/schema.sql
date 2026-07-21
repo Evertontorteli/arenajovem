@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS missoes (
   status VARCHAR(20) DEFAULT 'EM_ANALISE' CHECK (status IN ('ABERTA', 'ENCERRADA', 'EM_ANALISE')),
   tipo VARCHAR(20) NOT NULL DEFAULT 'FOTO' CHECK (tipo IN ('FOTO', 'AUDIO', 'VIDEO', 'QUIZ')),
   quiz_modo_pontuacao VARCHAR(20) NOT NULL DEFAULT 'PROPORCIONAL' CHECK (quiz_modo_pontuacao IN ('PROPORCIONAL', 'TUDO_OU_NADA')),
+  quiz_tempo_segundos INT,
   liberada_por INT,
   liberada_em TIMESTAMP,
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -79,8 +80,17 @@ CREATE TABLE IF NOT EXISTS quiz_tentativas (
   acertos INT NOT NULL DEFAULT 0,
   total_perguntas INT NOT NULL DEFAULT 0,
   pontos_obtidos INT NOT NULL DEFAULT 0,
+  iniciado_em TIMESTAMP,
+  duracao_ms INT,
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   UNIQUE (missao_id, usuario_id)
+);
+
+CREATE TABLE IF NOT EXISTS quiz_inicios (
+  missao_id INT NOT NULL REFERENCES missoes(id) ON DELETE CASCADE,
+  usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  iniciado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (missao_id, usuario_id)
 );
 
 CREATE TABLE IF NOT EXISTS quiz_respostas (

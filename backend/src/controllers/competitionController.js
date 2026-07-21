@@ -77,6 +77,19 @@ const updateMissionStatus = asyncHandler(async (req, res) => {
   res.json(mission);
 });
 
+const postMissionToFeed = asyncHandler(async (req, res) => {
+  const result = await competitionService.postMissionToFeed(
+    req.params.id,
+    req.user,
+    {
+      texto: req.body.texto,
+      encerrar: req.body.encerrar,
+      imagem_url: req.body.imagem_url,
+    }
+  );
+  res.status(201).json(result);
+});
+
 const submitMission = asyncHandler(async (req, res) => {
   if (!req.user.equipe_id) {
     throw new AppError('Você precisa estar em uma equipe para enviar missão.', 400);
@@ -109,6 +122,11 @@ const submitMissionQuiz = asyncHandler(async (req, res) => {
     respostas: req.body.respostas,
   });
   res.status(201).json(result);
+});
+
+const getMissionQuizRanking = asyncHandler(async (req, res) => {
+  const ranking = await competitionService.getMissionQuizRanking(req.params.id);
+  res.json(ranking);
 });
 
 const listMissionSubmissions = asyncHandler(async (_req, res) => {
@@ -180,9 +198,11 @@ module.exports = {
   updateMission,
   deleteMission,
   updateMissionStatus,
+  postMissionToFeed,
   submitMission,
   getMissionQuiz,
   submitMissionQuiz,
+  getMissionQuizRanking,
   listMissionSubmissions,
   reviewMissionSubmission,
   createFoodRecord,

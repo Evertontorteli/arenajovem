@@ -32,6 +32,25 @@ function submitLabel(tipo) {
   return 'Enviar foto';
 }
 
+function formatDuration(ms) {
+  if (ms == null) return '—';
+  const total = Math.max(0, Math.round(Number(ms) / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+}
+
+function isMissionActionable(mission) {
+  return mission.status === 'ABERTA' && mission.janela === 'NO_PRAZO';
+}
+
+function windowLabel(mission) {
+  if (mission.janela === 'AINDA_NAO_COMECOU') return 'Ainda não começou';
+  if (mission.janela === 'ENCERRADA_PRAZO') return 'Prazo encerrado';
+  if (mission.status !== 'ABERTA') return mission.status;
+  return 'No prazo';
+}
+
 function QuestionMedia({ midiaUrl, midiaTipo }) {
   if (!midiaUrl) return null;
   const src = resolveMediaUrl(midiaUrl);
@@ -69,6 +88,7 @@ function MissionsPage() {
     data_fim: '',
     tipo: 'FOTO',
     quiz_modo_pontuacao: 'PROPORCIONAL',
+    quiz_tempo_segundos: '',
   });
   const [perguntas, setPerguntas] = useState([emptyQuestion()]);
   const [capaFile, setCapaFile] = useState(null);
@@ -81,6 +101,7 @@ function MissionsPage() {
   const [quizMessage, setQuizMessage] = useState('');
   const [quizError, setQuizError] = useState('');
   const [creating, setCreating] = useState(false);
+  const [secondsLeft, setSecondsLeft] = useState(null);
 
   const loadMissions = async () => {
     const { data } = await http.get('/competition/missions');
@@ -91,12 +112,37 @@ function MissionsPage() {
     loadMissions();
   }, []);
 
+  useEffect(() => {
+    if (!quizData?.sessao || quizData.minha_tentativa) {
+      setSecondsLeft(null);
+      return undefined;
+    }
+    const tempoLimite = Number(quizData.missao?.quiz_tempo_segundos || 0);
+    if (!tempoLimite || !quizData.sessao.iniciado_em) {
+      setSecondsLeft(null);
+      return undefined;
+    }
+
+    const tick = () => {
+      const elapsed = Math.floor(
+        (Date.now() - new Date(quizData.sessao.iniciado_em).getTime()) / 1000
+      );
+      setSecondsLeft(Math.max(0, tempoLimite - elapsed));
+    };
+    tick();
+    const id = setInterval(tick, 500);
+    return () => clearInterval(id);
+  }, [quizData]);
+
   const createMission = async (event) => {
     event.preventDefault();
     setCreating(true);
     try {
       const payload = new FormData();
-      Object.entries(form).forEach(([key, value]) => payload.append(key, value));
+      Object.entries(form).forEach(([key, value]) => {
+        if (value === '' || value == null) return;
+        payload.append(key, value);
+      });
       if (capaFile) {
         payload.append('imagem_capa', capaFile);
       }
@@ -121,6 +167,7 @@ function MissionsPage() {
         data_fim: '',
         tipo: 'FOTO',
         quiz_modo_pontuacao: 'PROPORCIONAL',
+        quiz_tempo_segundos: '',
       });
       setCapaFile(null);
       setCapaFileName('');
@@ -166,7 +213,7 @@ function MissionsPage() {
       setQuizData(data);
       if (data.minha_tentativa) {
         setQuizMessage(
-          `Você já respondeu: ${data.minha_tentativa.acertos}/${data.minha_tentativa.total_perguntas} · ${data.minha_tentativa.pontos_obtidos} pts`
+          `Resultado: ${data.minha_tentativa.acertos}/${data.minha_tentativa.total_perguntas} · ${data.minha_tentativa.pontos_obtidos} pts · ${formatDuration(data.minha_tentativa.duracao_ms)}`
         );
       }
     } catch (error) {
@@ -179,6 +226,10 @@ function MissionsPage() {
 
   const submitQuiz = async () => {
     if (!activeQuizId || !quizData?.perguntas?.length) return;
+    if (secondsLeft === 0) {
+      setQuizError('Tempo esgotado.');
+      return;
+    }
     const respostas = quizData.perguntas.map((pergunta) => ({
       pergunta_id: pergunta.id,
       alternativa_id: quizAnswers[pergunta.id],
@@ -203,7 +254,11 @@ function MissionsPage() {
                 acertos: data.acertos,
                 total_perguntas: data.total_perguntas,
                 pontos_obtidos: data.pontos_obtidos,
+                duracao_ms: data.duracao_ms,
               },
+              historico: data.historico || prev.historico,
+              ranking: data.ranking || prev.ranking,
+              sessao: null,
             }
           : prev
       );
@@ -243,7 +298,7 @@ function MissionsPage() {
       <header>
         <h2 className="text-2xl font-semibold text-zinc-900">Missões</h2>
         <p className="mt-1 text-sm text-zinc-500">
-          Foto, áudio, vídeo ou quiz — pontuação automática no envio.
+          Pontuação automática, prazo real, 1 envio por pessoa e ranking do quiz.
         </p>
       </header>
 
@@ -254,72 +309,110 @@ function MissionsPage() {
               className="ig-card grid gap-2 p-4 sm:grid-cols-2 xl:grid-cols-3"
               onSubmit={createMission}
             >
-              <select
-                className="ig-input"
-                value={form.tipo}
-                onChange={(e) => {
-                  setForm((s) => ({ ...s, tipo: e.target.value }));
-                  setCapaFile(null);
-                  setCapaFileName('');
-                }}
-              >
-                <option value="FOTO">Tipo: Foto</option>
-                <option value="AUDIO">Tipo: Áudio</option>
-                <option value="VIDEO">Tipo: Vídeo</option>
-                <option value="QUIZ">Tipo: Quiz</option>
-              </select>
-              {form.tipo === 'QUIZ' ? (
+              <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                Tipo da missão
                 <select
                   className="ig-input"
-                  value={form.quiz_modo_pontuacao}
-                  onChange={(e) =>
-                    setForm((s) => ({ ...s, quiz_modo_pontuacao: e.target.value }))
-                  }
+                  value={form.tipo}
+                  onChange={(e) => {
+                    setForm((s) => ({ ...s, tipo: e.target.value }));
+                    setCapaFile(null);
+                    setCapaFileName('');
+                  }}
                 >
-                  <option value="PROPORCIONAL">Pontos: proporcional aos acertos</option>
-                  <option value="TUDO_OU_NADA">Pontos: só se acertar tudo</option>
+                  <option value="FOTO">Foto</option>
+                  <option value="AUDIO">Áudio</option>
+                  <option value="VIDEO">Vídeo</option>
+                  <option value="QUIZ">Quiz</option>
                 </select>
+              </label>
+              {form.tipo === 'QUIZ' ? (
+                <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                  Modo de pontuação
+                  <select
+                    className="ig-input"
+                    value={form.quiz_modo_pontuacao}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, quiz_modo_pontuacao: e.target.value }))
+                    }
+                  >
+                    <option value="PROPORCIONAL">Proporcional aos acertos</option>
+                    <option value="TUDO_OU_NADA">Só se acertar tudo</option>
+                  </select>
+                </label>
               ) : (
                 <div className="hidden sm:block" />
               )}
-              <input
-                className="ig-input"
-                placeholder="Título"
-                value={form.titulo}
-                onChange={(e) => setForm((s) => ({ ...s, titulo: e.target.value }))}
-                required
-              />
-              <textarea
-                className="ig-input sm:col-span-2 xl:col-span-3"
-                placeholder="Descrição"
-                value={form.descricao}
-                onChange={(e) => setForm((s) => ({ ...s, descricao: e.target.value }))}
-                required
-              />
-              <input
-                className="ig-input"
-                type="number"
-                min="1"
-                value={form.pontuacao}
-                onChange={(e) => setForm((s) => ({ ...s, pontuacao: e.target.value }))}
-                title="Pontuação total da missão"
-              />
-              <input
-                className="ig-input"
-                type="datetime-local"
-                value={form.data_inicio}
-                onChange={(e) => setForm((s) => ({ ...s, data_inicio: e.target.value }))}
-                required
-              />
-              <input
-                className="ig-input"
-                type="datetime-local"
-                value={form.data_fim}
-                onChange={(e) => setForm((s) => ({ ...s, data_fim: e.target.value }))}
-                required
-              />
+              <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                Título
+                <input
+                  className="ig-input"
+                  placeholder="Nome da missão"
+                  value={form.titulo}
+                  onChange={(e) => setForm((s) => ({ ...s, titulo: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-medium text-zinc-700 sm:col-span-2 xl:col-span-3">
+                Descrição
+                <textarea
+                  className="ig-input"
+                  placeholder="Explique o desafio para os participantes"
+                  value={form.descricao}
+                  onChange={(e) => setForm((s) => ({ ...s, descricao: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                Pontuação
+                <input
+                  className="ig-input"
+                  type="number"
+                  min="1"
+                  placeholder="Ex.: 10"
+                  value={form.pontuacao}
+                  onChange={(e) => setForm((s) => ({ ...s, pontuacao: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                Data e hora de início
+                <input
+                  className="ig-input"
+                  type="datetime-local"
+                  value={form.data_inicio}
+                  onChange={(e) => setForm((s) => ({ ...s, data_inicio: e.target.value }))}
+                  required
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                Data e hora de fim
+                <input
+                  className="ig-input"
+                  type="datetime-local"
+                  value={form.data_fim}
+                  onChange={(e) => setForm((s) => ({ ...s, data_fim: e.target.value }))}
+                  required
+                />
+              </label>
 
-              <label className="grid gap-1 text-sm text-zinc-600 sm:col-span-2 xl:col-span-3">
+              {form.tipo === 'QUIZ' ? (
+                <label className="grid gap-1 text-sm font-medium text-zinc-700 sm:col-span-2 xl:col-span-3">
+                  Tempo limite do quiz (segundos, opcional)
+                  <input
+                    className="ig-input"
+                    type="number"
+                    min="10"
+                    placeholder="Ex.: 120 — vazio = sem limite"
+                    value={form.quiz_tempo_segundos}
+                    onChange={(e) =>
+                      setForm((s) => ({ ...s, quiz_tempo_segundos: e.target.value }))
+                    }
+                  />
+                </label>
+              ) : null}
+
+              <label className="grid gap-1 text-sm font-medium text-zinc-700 sm:col-span-2 xl:col-span-3">
                 {form.tipo === 'AUDIO'
                   ? 'Áudio da missão'
                   : form.tipo === 'VIDEO'
@@ -346,24 +439,14 @@ function MissionsPage() {
                   required={form.tipo === 'FOTO' || form.tipo === 'AUDIO' || form.tipo === 'VIDEO'}
                 />
                 {capaFileName ? (
-                  <span className="text-xs text-zinc-500">{capaFileName}</span>
-                ) : (
-                  <span className="text-xs text-zinc-400">
-                    {form.tipo === 'FOTO'
-                      ? 'Selecione a foto que aparece na missão.'
-                      : form.tipo === 'AUDIO'
-                        ? 'Selecione o áudio de referência da missão.'
-                        : form.tipo === 'VIDEO'
-                          ? 'Selecione o vídeo de referência da missão.'
-                          : 'Opcional para o quiz.'}
-                  </span>
-                )}
+                  <span className="text-xs font-normal text-zinc-500">{capaFileName}</span>
+                ) : null}
               </label>
 
               {form.tipo === 'QUIZ' ? (
                 <div className="grid gap-3 sm:col-span-2 xl:col-span-3">
                   <p className="text-sm font-medium text-zinc-700">
-                    Perguntas do quiz (pode anexar áudio/vídeo, ex.: “quem está cantando?”)
+                    Perguntas do quiz (mídia opcional por pergunta)
                   </p>
                   {perguntas.map((pergunta, qIndex) => (
                     <div
@@ -386,16 +469,19 @@ function MissionsPage() {
                           </button>
                         ) : null}
                       </div>
-                      <input
-                        className="ig-input"
-                        placeholder='Ex.: Quem está cantando essa música?'
-                        value={pergunta.enunciado}
-                        onChange={(e) =>
-                          updatePergunta(qIndex, { enunciado: e.target.value })
-                        }
-                        required
-                      />
-                      <label className="grid gap-1 text-xs text-zinc-500">
+                      <label className="grid gap-1 text-xs font-medium text-zinc-600">
+                        Enunciado
+                        <input
+                          className="ig-input"
+                          placeholder="Ex.: Quem está cantando essa música?"
+                          value={pergunta.enunciado}
+                          onChange={(e) =>
+                            updatePergunta(qIndex, { enunciado: e.target.value })
+                          }
+                          required
+                        />
+                      </label>
+                      <label className="grid gap-1 text-xs font-medium text-zinc-600">
                         Mídia opcional (áudio, vídeo ou imagem)
                         <input
                           className="ig-input"
@@ -409,10 +495,10 @@ function MissionsPage() {
                             });
                           }}
                         />
-                        {pergunta.midiaPreview ? (
-                          <span className="text-zinc-600">{pergunta.midiaPreview}</span>
-                        ) : null}
                       </label>
+                      <p className="text-xs font-medium text-zinc-600">
+                        Alternativas (marque a correta)
+                      </p>
                       {pergunta.alternativas.map((alt, aIndex) => (
                         <label
                           key={`a-${qIndex}-${aIndex}`}
@@ -428,7 +514,7 @@ function MissionsPage() {
                           />
                           <input
                             className="ig-input flex-1"
-                            placeholder={`Alternativa ${aIndex + 1}`}
+                            placeholder={`Texto da alternativa ${aIndex + 1}`}
                             value={alt.texto}
                             onChange={(e) =>
                               updateAlternativa(qIndex, aIndex, {
@@ -437,21 +523,6 @@ function MissionsPage() {
                             }
                             required
                           />
-                          {pergunta.alternativas.length > 2 ? (
-                            <button
-                              type="button"
-                              className="bg-transparent p-0 text-xs text-zinc-500 hover:underline"
-                              onClick={() =>
-                                updatePergunta(qIndex, {
-                                  alternativas: pergunta.alternativas.filter(
-                                    (_, i) => i !== aIndex
-                                  ),
-                                })
-                              }
-                            >
-                              ×
-                            </button>
-                          ) : null}
                         </label>
                       ))}
                       <button
@@ -499,16 +570,8 @@ function MissionsPage() {
                     <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs text-zinc-600">
                       {TIPO_LABEL[mission.tipo] || mission.tipo || 'Foto'}
                     </span>
-                    <span
-                      className={`rounded-full border px-2 py-0.5 text-xs ${
-                        mission.status === 'ABERTA'
-                          ? 'border-emerald-200 bg-emerald-50 text-emerald-600'
-                          : mission.status === 'ENCERRADA'
-                            ? 'border-rose-200 bg-rose-50 text-rose-600'
-                            : 'border-amber-200 bg-amber-50 text-amber-600'
-                      }`}
-                    >
-                      {mission.status}
+                    <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs text-zinc-600">
+                      {windowLabel(mission)}
                     </span>
                   </div>
                 </div>
@@ -529,16 +592,20 @@ function MissionsPage() {
                   {mission.pontuacao} pts
                   {mission.tipo === 'QUIZ'
                     ? ` · ${mission.quiz_modo_pontuacao === 'TUDO_OU_NADA' ? 'tudo ou nada' : 'proporcional'}`
+                    : ''}
+                  {mission.tipo === 'QUIZ' && mission.quiz_tempo_segundos
+                    ? ` · ${mission.quiz_tempo_segundos}s`
                     : ''}{' '}
-                  • {new Date(mission.data_inicio).toLocaleDateString('pt-BR')} -{' '}
-                  {new Date(mission.data_fim).toLocaleDateString('pt-BR')}
+                  • {new Date(mission.data_inicio).toLocaleString('pt-BR')} —{' '}
+                  {new Date(mission.data_fim).toLocaleString('pt-BR')}
                 </small>
 
                 {mission.tipo === 'QUIZ' && mission.minha_tentativa ? (
                   <p className="text-sm text-emerald-700">
                     Sua pontuação: {mission.minha_tentativa.acertos}/
                     {mission.minha_tentativa.total_perguntas} ·{' '}
-                    {mission.minha_tentativa.pontos_obtidos} pts para o time
+                    {mission.minha_tentativa.pontos_obtidos} pts ·{' '}
+                    {formatDuration(mission.minha_tentativa.duracao_ms)}
                   </p>
                 ) : null}
 
@@ -550,22 +617,53 @@ function MissionsPage() {
                 ) : null}
 
                 {isAdmin ? (
-                  <button
-                    className="ig-button"
-                    type="button"
-                    onClick={() => publishMission(mission.id)}
-                    disabled={mission.status === 'ABERTA'}
-                  >
-                    {mission.status === 'ABERTA' ? 'Já liberada' : 'Liberar Missão'}
-                  </button>
+                  <div className="grid gap-2">
+                    <button
+                      className="ig-button"
+                      type="button"
+                      onClick={() => publishMission(mission.id)}
+                      disabled={mission.status === 'ABERTA' || mission.status === 'ENCERRADA'}
+                    >
+                      {mission.status === 'ABERTA'
+                        ? 'Já liberada'
+                        : mission.status === 'ENCERRADA'
+                          ? 'Encerrada'
+                          : 'Liberar Missão'}
+                    </button>
+                    {mission.status === 'ABERTA' || mission.status === 'ENCERRADA' ? (
+                      <button
+                        className="ig-button"
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const { data } = await http.post(
+                              `/competition/missions/${mission.id}/feed-post`,
+                              { encerrar: true }
+                            );
+                            alert(data.message || 'Publicado no feed!');
+                            await loadMissions();
+                          } catch (error) {
+                            alert(
+                              error?.response?.data?.message ||
+                                'Não foi possível postar no feed.'
+                            );
+                          }
+                        }}
+                      >
+                        Encerrar e postar no feed
+                      </button>
+                    ) : null}
+                  </div>
                 ) : mission.tipo === 'QUIZ' ? (
                   <button
                     className="ig-button"
                     type="button"
                     onClick={() => openQuiz(mission.id)}
-                    disabled={mission.status !== 'ABERTA'}
+                    disabled={!isMissionActionable(mission) && !mission.minha_tentativa}
                   >
-                    {mission.minha_tentativa ? 'Ver resultado' : 'Responder quiz'}
+                    {mission.minha_tentativa
+                      ? 'Ver histórico / ranking'
+                      : 'Responder quiz'}
                   </button>
                 ) : mission.meu_envio ? (
                   <p className="text-xs text-zinc-500">
@@ -583,12 +681,14 @@ function MissionsPage() {
                           [mission.id]: e.target.files?.[0],
                         }))
                       }
-                      disabled={mission.status !== 'ABERTA'}
+                      disabled={!isMissionActionable(mission)}
                     />
                     <button
                       className="ig-button"
                       type="button"
-                      disabled={!submissionFiles[mission.id] || mission.status !== 'ABERTA'}
+                      disabled={
+                        !submissionFiles[mission.id] || !isMissionActionable(mission)
+                      }
                       onClick={() => submitMission(mission.id)}
                     >
                       {submitLabel(mission.tipo)}
@@ -602,7 +702,7 @@ function MissionsPage() {
                     className="bg-transparent p-0 text-left text-xs text-blue-700 hover:underline"
                     onClick={() => openQuiz(mission.id)}
                   >
-                    Pré-visualizar perguntas
+                    Pré-visualizar / ranking
                   </button>
                 ) : null}
               </article>
@@ -621,6 +721,9 @@ function MissionsPage() {
                     {quizData?.missao?.quiz_modo_pontuacao === 'TUDO_OU_NADA'
                       ? 'tudo ou nada'
                       : 'proporcional'}
+                    {quizData?.missao?.quiz_tempo_segundos
+                      ? ` · limite ${quizData.missao.quiz_tempo_segundos}s`
+                      : ''}
                   </p>
                 </div>
                 <button
@@ -637,6 +740,16 @@ function MissionsPage() {
                 </button>
               </div>
 
+              {secondsLeft != null && !quizData?.minha_tentativa ? (
+                <p
+                  className={`text-sm font-semibold ${
+                    secondsLeft <= 10 ? 'text-rose-600' : 'text-zinc-800'
+                  }`}
+                >
+                  Tempo restante: {secondsLeft}s
+                </p>
+              ) : null}
+
               {quizLoading && !quizData ? (
                 <p className="text-sm text-zinc-500">Carregando...</p>
               ) : null}
@@ -645,50 +758,110 @@ function MissionsPage() {
                 <p className="text-sm text-emerald-700">{quizMessage}</p>
               ) : null}
 
-              {quizData?.perguntas?.map((pergunta, index) => (
-                <fieldset key={pergunta.id} className="grid gap-2">
-                  <legend className="text-sm font-medium text-zinc-800">
-                    {index + 1}. {pergunta.enunciado}
-                  </legend>
-                  <QuestionMedia
-                    midiaUrl={pergunta.midia_url}
-                    midiaTipo={pergunta.midia_tipo}
-                  />
-                  {pergunta.alternativas.map((alt) => (
-                    <label
-                      key={alt.id}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
-                    >
-                      <input
-                        type="radio"
-                        name={`quiz-${pergunta.id}`}
-                        disabled={Boolean(quizData.minha_tentativa) || quizLoading}
-                        checked={Number(quizAnswers[pergunta.id]) === Number(alt.id)}
-                        onChange={() =>
-                          setQuizAnswers((state) => ({
-                            ...state,
-                            [pergunta.id]: alt.id,
-                          }))
-                        }
+              {!quizData?.minha_tentativa
+                ? quizData?.perguntas?.map((pergunta, index) => (
+                    <fieldset key={pergunta.id} className="grid gap-2">
+                      <legend className="text-sm font-medium text-zinc-800">
+                        {index + 1}. {pergunta.enunciado}
+                      </legend>
+                      <QuestionMedia
+                        midiaUrl={pergunta.midia_url}
+                        midiaTipo={pergunta.midia_tipo}
                       />
-                      <span>{alt.texto}</span>
-                      {isAdmin && alt.correta ? (
-                        <span className="ml-auto text-xs text-emerald-600">correta</span>
-                      ) : null}
-                    </label>
-                  ))}
-                </fieldset>
-              ))}
+                      {pergunta.alternativas.map((alt) => (
+                        <label
+                          key={alt.id}
+                          className="flex cursor-pointer items-center gap-2 rounded-lg border border-zinc-200 px-3 py-2 text-sm"
+                        >
+                          <input
+                            type="radio"
+                            name={`quiz-${pergunta.id}`}
+                            disabled={quizLoading || secondsLeft === 0}
+                            checked={Number(quizAnswers[pergunta.id]) === Number(alt.id)}
+                            onChange={() =>
+                              setQuizAnswers((state) => ({
+                                ...state,
+                                [pergunta.id]: alt.id,
+                              }))
+                            }
+                          />
+                          <span>{alt.texto}</span>
+                          {isAdmin && alt.correta ? (
+                            <span className="ml-auto text-xs text-emerald-600">correta</span>
+                          ) : null}
+                        </label>
+                      ))}
+                    </fieldset>
+                  ))
+                : null}
 
               {!quizData?.minha_tentativa && quizData?.perguntas?.length ? (
                 <button
                   type="button"
                   className="ig-button"
-                  disabled={quizLoading}
+                  disabled={quizLoading || secondsLeft === 0}
                   onClick={submitQuiz}
                 >
-                  {quizLoading ? 'Enviando...' : 'Enviar respostas (1 tentativa)'}
+                  {quizLoading
+                    ? 'Enviando...'
+                    : secondsLeft === 0
+                      ? 'Tempo esgotado'
+                      : 'Enviar respostas (1 tentativa)'}
                 </button>
+              ) : null}
+
+              {quizData?.historico?.itens?.length ? (
+                <div className="grid gap-2 border-t border-zinc-200 pt-3">
+                  <h4 className="text-sm font-semibold text-zinc-900">
+                    Seu histórico (gabarito liberado após responder)
+                  </h4>
+                  {quizData.historico.itens.map((item, index) => (
+                    <div
+                      key={item.pergunta_id}
+                      className={`rounded-lg border px-3 py-2 text-sm ${
+                        item.acertou
+                          ? 'border-emerald-200 bg-emerald-50'
+                          : 'border-rose-200 bg-rose-50'
+                      }`}
+                    >
+                      <p className="font-medium">
+                        {index + 1}. {item.enunciado}{' '}
+                        <span>{item.acertou ? '· Acertou' : '· Errou'}</span>
+                      </p>
+                      <p className="text-xs text-zinc-600">
+                        Sua resposta: {item.resposta_escolhida}
+                      </p>
+                      {!item.acertou ? (
+                        <p className="text-xs text-zinc-600">
+                          Correta: {item.resposta_correta}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {quizData?.ranking?.length ? (
+                <div className="grid gap-2 border-t border-zinc-200 pt-3">
+                  <h4 className="text-sm font-semibold text-zinc-900">
+                    Ranking (pontos · quem foi mais rápido)
+                  </h4>
+                  {quizData.ranking.map((row) => (
+                    <div
+                      key={`${row.usuario_id}-${row.posicao}`}
+                      className="flex items-center justify-between gap-2 text-sm"
+                    >
+                      <span>
+                        #{row.posicao} {row.usuario_nome}{' '}
+                        <span className="text-zinc-500">({row.equipe_nome})</span>
+                      </span>
+                      <span className="text-zinc-700">
+                        {row.pontos_obtidos} pts · {row.acertos}/{row.total_perguntas} ·{' '}
+                        {formatDuration(row.duracao_ms)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               ) : null}
             </div>
           ) : null}
@@ -702,21 +875,15 @@ function MissionsPage() {
               <strong className="text-zinc-900">{missions.length}</strong>
             </div>
             <div className="flex items-center justify-between text-sm text-zinc-500">
-              <span>Abertas</span>
+              <span>No prazo</span>
               <strong className="text-zinc-900">
-                {missions.filter((m) => m.status === 'ABERTA').length}
+                {missions.filter((m) => m.janela === 'NO_PRAZO' && m.status === 'ABERTA').length}
               </strong>
             </div>
             <div className="flex items-center justify-between text-sm text-zinc-500">
               <span>Quizzes</span>
               <strong className="text-zinc-900">
                 {missions.filter((m) => m.tipo === 'QUIZ').length}
-              </strong>
-            </div>
-            <div className="flex items-center justify-between text-sm text-zinc-500">
-              <span>Em análise</span>
-              <strong className="text-zinc-900">
-                {missions.filter((m) => m.status === 'EM_ANALISE').length}
               </strong>
             </div>
           </div>

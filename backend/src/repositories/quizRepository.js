@@ -33,6 +33,11 @@ async function ensureQuizSchema() {
   `);
 
   await query(`
+    ALTER TABLE missoes
+      ADD COLUMN IF NOT EXISTS quiz_tempo_segundos INT
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS missao_perguntas (
       id SERIAL PRIMARY KEY,
       missao_id INT NOT NULL REFERENCES missoes(id) ON DELETE CASCADE,
@@ -71,8 +76,27 @@ async function ensureQuizSchema() {
       acertos INT NOT NULL DEFAULT 0,
       total_perguntas INT NOT NULL DEFAULT 0,
       pontos_obtidos INT NOT NULL DEFAULT 0,
+      iniciado_em TIMESTAMP,
+      duracao_ms INT,
       criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (missao_id, usuario_id)
+    )
+  `);
+  await query(`
+    ALTER TABLE quiz_tentativas
+      ADD COLUMN IF NOT EXISTS iniciado_em TIMESTAMP
+  `);
+  await query(`
+    ALTER TABLE quiz_tentativas
+      ADD COLUMN IF NOT EXISTS duracao_ms INT
+  `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS quiz_inicios (
+      missao_id INT NOT NULL REFERENCES missoes(id) ON DELETE CASCADE,
+      usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      iniciado_em TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (missao_id, usuario_id)
     )
   `);
 
@@ -87,6 +111,15 @@ async function ensureQuizSchema() {
     )
   `);
 
+  try {
+    await query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_envios_missao_usuario
+        ON envios_missao (missao_id, usuario_id)
+    `);
+  } catch (_error) {
+    // Pode falhar se já existirem envios duplicados legados.
+  }
+
   await query(`
     CREATE INDEX IF NOT EXISTS idx_missao_perguntas_missao
       ON missao_perguntas (missao_id, ordem)
@@ -94,6 +127,10 @@ async function ensureQuizSchema() {
   await query(`
     CREATE INDEX IF NOT EXISTS idx_quiz_tentativas_missao
       ON quiz_tentativas (missao_id)
+  `);
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_quiz_tentativas_ranking
+      ON quiz_tentativas (missao_id, pontos_obtidos DESC, duracao_ms ASC)
   `);
 
   ensured = true;
@@ -225,12 +262,122 @@ async function listAttemptsForMissions(usuarioId, missaoIds) {
   await ensureQuizSchema();
   const placeholders = missaoIds.map(() => '?').join(',');
   const rows = await query(
-    `SELECT missao_id, acertos, total_perguntas, pontos_obtidos, criado_em
+    `SELECT missao_id, acertos, total_perguntas, pontos_obtidos, duracao_ms, criado_em
      FROM quiz_tentativas
      WHERE usuario_id = ? AND missao_id IN (${placeholders})`,
     [usuarioId, ...missaoIds]
   );
   return new Map(rows.map((r) => [Number(r.missao_id), r]));
+}
+
+async function startQuizSession(missaoId, usuarioId) {
+  await ensureQuizSchema();
+  const existingAttempt = await findAttemptByUser(missaoId, usuarioId);
+  if (existingAttempt) {
+    return {
+      ja_respondido: true,
+      iniciado_em: existingAttempt.iniciado_em || existingAttempt.criado_em,
+    };
+  }
+
+  const rows = await query(
+    `INSERT INTO quiz_inicios (missao_id, usuario_id, iniciado_em)
+     VALUES (?, ?, NOW())
+     ON CONFLICT (missao_id, usuario_id)
+     DO UPDATE SET missao_id = EXCLUDED.missao_id
+     RETURNING iniciado_em`,
+    [missaoId, usuarioId]
+  );
+  return {
+    ja_respondido: false,
+    iniciado_em: rows[0].iniciado_em,
+  };
+}
+
+async function getQuizSessionStart(missaoId, usuarioId) {
+  await ensureQuizSchema();
+  const rows = await query(
+    `SELECT iniciado_em FROM quiz_inicios
+     WHERE missao_id = ? AND usuario_id = ?
+     LIMIT 1`,
+    [missaoId, usuarioId]
+  );
+  return rows[0]?.iniciado_em || null;
+}
+
+async function getAttemptHistory(missaoId, usuarioId) {
+  await ensureQuizSchema();
+  const attempt = await findAttemptByUser(missaoId, usuarioId);
+  if (!attempt) return null;
+
+  const respostas = await query(
+    `SELECT
+        qr.pergunta_id,
+        qr.alternativa_id,
+        qr.correta AS acertou,
+        mp.enunciado,
+        mp.ordem,
+        mp.midia_url,
+        mp.midia_tipo,
+        escolhida.texto AS resposta_escolhida,
+        correta.texto AS resposta_correta
+     FROM quiz_respostas qr
+     INNER JOIN missao_perguntas mp ON mp.id = qr.pergunta_id
+     INNER JOIN missao_alternativas escolhida ON escolhida.id = qr.alternativa_id
+     INNER JOIN missao_alternativas correta
+       ON correta.pergunta_id = qr.pergunta_id AND correta.correta = 1
+     WHERE qr.tentativa_id = ?
+     ORDER BY mp.ordem ASC, mp.id ASC`,
+    [attempt.id]
+  );
+
+  return {
+    tentativa: {
+      id: attempt.id,
+      acertos: attempt.acertos,
+      total_perguntas: attempt.total_perguntas,
+      pontos_obtidos: attempt.pontos_obtidos,
+      duracao_ms: attempt.duracao_ms,
+      criado_em: attempt.criado_em,
+    },
+    itens: respostas.map((row) => ({
+      pergunta_id: row.pergunta_id,
+      enunciado: row.enunciado,
+      midia_url: row.midia_url,
+      midia_tipo: row.midia_tipo,
+      acertou: Number(row.acertou) === 1,
+      resposta_escolhida: row.resposta_escolhida,
+      // Gabarito só depois de responder
+      resposta_correta: row.resposta_correta,
+    })),
+  };
+}
+
+async function getQuizRanking(missaoId, limit = 20) {
+  await ensureQuizSchema();
+  return query(
+    `SELECT
+        qt.usuario_id,
+        u.nome AS usuario_nome,
+        e.nome AS equipe_nome,
+        qt.acertos,
+        qt.total_perguntas,
+        qt.pontos_obtidos,
+        qt.duracao_ms,
+        qt.criado_em,
+        DENSE_RANK() OVER (
+          ORDER BY qt.pontos_obtidos DESC,
+                   COALESCE(qt.duracao_ms, 2147483647) ASC,
+                   qt.criado_em ASC
+        )::int AS posicao
+     FROM quiz_tentativas qt
+     INNER JOIN usuarios u ON u.id = qt.usuario_id
+     INNER JOIN equipes e ON e.id = qt.equipe_id
+     WHERE qt.missao_id = ?
+     ORDER BY posicao ASC, qt.criado_em ASC
+     LIMIT ?`,
+    [missaoId, Math.min(50, Math.max(1, Number(limit) || 20))]
+  );
 }
 
 async function submitQuizAttempt({
@@ -253,6 +400,41 @@ async function submitQuizAttempt({
       const err = new Error('Você já respondeu este quiz.');
       err.status = 409;
       throw err;
+    }
+
+    const inicioRows = await queryOn(
+      client,
+      `SELECT iniciado_em FROM quiz_inicios
+       WHERE missao_id = ? AND usuario_id = ?
+       FOR UPDATE`,
+      [missao.id, usuarioId]
+    );
+    let iniciadoEm = inicioRows[0]?.iniciado_em
+      ? new Date(inicioRows[0].iniciado_em)
+      : null;
+    if (!iniciadoEm) {
+      iniciadoEm = new Date();
+      await queryOn(
+        client,
+        `INSERT INTO quiz_inicios (missao_id, usuario_id, iniciado_em)
+         VALUES (?, ?, ?)
+         ON CONFLICT (missao_id, usuario_id) DO NOTHING`,
+        [missao.id, usuarioId, iniciadoEm.toISOString()]
+      );
+    }
+
+    const agora = new Date();
+    const duracaoMs = Math.max(0, agora.getTime() - iniciadoEm.getTime());
+    const tempoLimite = Number(missao.quiz_tempo_segundos || 0);
+    if (tempoLimite > 0) {
+      const graceMs = 3000;
+      if (duracaoMs > tempoLimite * 1000 + graceMs) {
+        const err = new Error(
+          `Tempo esgotado. Limite de ${tempoLimite} segundos.`
+        );
+        err.status = 400;
+        throw err;
+      }
     }
 
     const perguntas = await queryOn(
@@ -322,10 +504,19 @@ async function submitQuizAttempt({
     const tentativaRows = await queryOn(
       client,
       `INSERT INTO quiz_tentativas
-        (missao_id, usuario_id, equipe_id, acertos, total_perguntas, pontos_obtidos)
-       VALUES (?, ?, ?, ?, ?, ?)
+        (missao_id, usuario_id, equipe_id, acertos, total_perguntas, pontos_obtidos, iniciado_em, duracao_ms)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`,
-      [missao.id, usuarioId, equipeId, acertos, perguntas.length, pontos]
+      [
+        missao.id,
+        usuarioId,
+        equipeId,
+        acertos,
+        perguntas.length,
+        pontos,
+        iniciadoEm.toISOString(),
+        duracaoMs,
+      ]
     );
     const tentativa = tentativaRows[0];
 
@@ -348,7 +539,7 @@ async function submitQuizAttempt({
         [
           equipeId,
           pontos,
-          `${acertos}/${perguntas.length} acertos`,
+          `${acertos}/${perguntas.length} acertos · ${Math.round(duracaoMs / 1000)}s`,
           tentativa.id,
           usuarioId,
         ]
@@ -371,5 +562,9 @@ module.exports = {
   getMissionQuestions,
   findAttemptByUser,
   listAttemptsForMissions,
+  startQuizSession,
+  getQuizSessionStart,
+  getAttemptHistory,
+  getQuizRanking,
   submitQuizAttempt,
 };

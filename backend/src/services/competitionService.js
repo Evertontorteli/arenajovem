@@ -2,6 +2,10 @@ const AppError = require('../utils/AppError');
 const competitionRepository = require('../repositories/competitionRepository');
 const quizRepository = require('../repositories/quizRepository');
 const socialRepository = require('../repositories/socialRepository');
+const {
+  assertMissionWindow,
+  getMissionWindowState,
+} = require('../utils/missionWindow');
 
 function parsePerguntas(raw) {
   if (Array.isArray(raw)) return raw;
@@ -51,10 +55,17 @@ function validateQuizPerguntas(perguntas) {
   }
 }
 
+function withWindowMeta(mission) {
+  return {
+    ...mission,
+    janela: getMissionWindowState(mission),
+  };
+}
+
 async function listMissions(user) {
   await quizRepository.ensureQuizSchema();
   const missions = await competitionRepository.listMissions();
-  if (!user?.id) return missions;
+  if (!user?.id) return missions.map(withWindowMeta);
 
   const quizIds = missions
     .filter((m) => m.tipo === 'QUIZ')
@@ -73,15 +84,17 @@ async function listMissions(user) {
   );
 
   return missions.map((mission) => {
+    const base = withWindowMeta(mission);
     if (mission.tipo === 'QUIZ') {
       const attempt = attempts.get(Number(mission.id));
       return {
-        ...mission,
+        ...base,
         minha_tentativa: attempt
           ? {
               acertos: attempt.acertos,
               total_perguntas: attempt.total_perguntas,
               pontos_obtidos: attempt.pontos_obtidos,
+              duracao_ms: attempt.duracao_ms,
               criado_em: attempt.criado_em,
             }
           : null,
@@ -90,7 +103,7 @@ async function listMissions(user) {
 
     const submission = submissions.get(Number(mission.id));
     return {
-      ...mission,
+      ...base,
       meu_envio: submission
         ? {
             id: submission.id,
@@ -127,6 +140,7 @@ async function createMission(data) {
       data.quiz_modo_pontuacao === 'TUDO_OU_NADA'
         ? 'TUDO_OU_NADA'
         : 'PROPORCIONAL',
+    quiz_tempo_segundos: data.quiz_tempo_segundos,
   });
 }
 
@@ -164,6 +178,84 @@ async function updateMissionStatus(id, status, userId) {
   return updated;
 }
 
+async function postMissionToFeed(missionId, adminUser, options = {}) {
+  const mission = await competitionRepository.findMissionById(missionId);
+  if (!mission) throw new AppError('Missão não encontrada.', 404);
+
+  const existing = await socialRepository.findPostByMissionId(missionId);
+  if (existing) {
+    throw new AppError('Esta missão já foi publicada no feed.', 409);
+  }
+
+  let imagemUrl = options.imagem_url || mission.imagem_capa || null;
+  if (!imagemUrl && mission.tipo === 'QUIZ') {
+    const perguntas = await quizRepository.getMissionQuestions(missionId);
+    const withMedia = perguntas.find((p) => p.midia_url);
+    if (withMedia) imagemUrl = withMedia.midia_url;
+  }
+  if (!imagemUrl) {
+    throw new AppError(
+      'Adicione uma capa (ou mídia) na missão antes de postar no feed.',
+      400
+    );
+  }
+
+  const encerrar = options.encerrar !== false;
+  if (encerrar && mission.status !== 'ENCERRADA') {
+    await competitionRepository.updateMissionStatus(
+      missionId,
+      'ENCERRADA',
+      adminUser.id
+    );
+  }
+
+  let texto = String(options.texto || '').trim();
+  if (!texto) {
+    const tipoLabel =
+      mission.tipo === 'QUIZ'
+        ? 'quiz'
+        : mission.tipo === 'AUDIO'
+          ? 'missão de áudio'
+          : mission.tipo === 'VIDEO'
+            ? 'missão de vídeo'
+            : 'missão';
+    texto = `Missão concluída: ${mission.titulo}\n\nA ${tipoLabel} foi encerrada. Confira no feed e comente com o seu time!`;
+
+    if (mission.tipo === 'QUIZ') {
+      const ranking = await quizRepository.getQuizRanking(missionId, 3);
+      if (ranking.length) {
+        const lines = ranking.map(
+          (row) =>
+            `#${row.posicao} ${row.usuario_nome} (${row.equipe_nome}) — ${row.pontos_obtidos} pts`
+        );
+        texto += `\n\nTop do quiz:\n${lines.join('\n')}`;
+      }
+    }
+  }
+
+  const post = await socialRepository.createPost({
+    autor_id: adminUser.id,
+    equipe_id: adminUser.equipe_id || null,
+    imagem_url: imagemUrl,
+    texto,
+    tipo_publicacao: 'MISSAO_CONCLUIDA',
+    missao_id: missionId,
+    possui_selo_missao: true,
+  });
+
+  await socialRepository.createNotificationForAll({
+    titulo: 'Missão no feed',
+    mensagem: `A missão "${mission.titulo}" foi publicada no feed. Veja e comente!`,
+    tipo: 'NOVA_MISSAO',
+  });
+
+  return {
+    post,
+    mission: await competitionRepository.findMissionById(missionId),
+    message: 'Missão publicada no feed e encerrada.',
+  };
+}
+
 async function submitMission(payload) {
   const mission = await competitionRepository.findMissionById(payload.missao_id);
   if (!mission) throw new AppError('Missão não encontrada.', 404);
@@ -173,6 +265,7 @@ async function submitMission(payload) {
   if (mission.status !== 'ABERTA') {
     throw new AppError('Missão não está aberta para envios.', 400);
   }
+  assertMissionWindow(mission);
 
   const expectedByTipo = {
     FOTO: 'IMAGEM',
@@ -227,9 +320,34 @@ async function getMissionQuiz(missaoId, user) {
     ? await quizRepository.findAttemptByUser(missaoId, user.id)
     : null;
 
+  // Gabarito nunca vai nas perguntas do participante; admin vê na prévia.
+  const includeCorrect = isAdmin;
   const perguntas = await quizRepository.getMissionQuestions(missaoId, {
-    includeCorrect: isAdmin,
+    includeCorrect,
   });
+
+  let sessao = null;
+  let historico = null;
+  let ranking = [];
+
+  if (user?.id) {
+    if (attempt) {
+      historico = await quizRepository.getAttemptHistory(missaoId, user.id);
+    } else if (mission.status === 'ABERTA' && user.equipe_id) {
+      assertMissionWindow(mission);
+      sessao = await quizRepository.startQuizSession(missaoId, user.id);
+    }
+    ranking = await quizRepository.getQuizRanking(missaoId, 15);
+  }
+
+  const tempoLimite = Number(mission.quiz_tempo_segundos || 0) || null;
+  let tempoRestanteSegundos = null;
+  if (sessao?.iniciado_em && tempoLimite) {
+    const elapsed = Math.floor(
+      (Date.now() - new Date(sessao.iniciado_em).getTime()) / 1000
+    );
+    tempoRestanteSegundos = Math.max(0, tempoLimite - elapsed);
+  }
 
   return {
     missao: {
@@ -238,18 +356,31 @@ async function getMissionQuiz(missaoId, user) {
       descricao: mission.descricao,
       pontuacao: mission.pontuacao,
       status: mission.status,
+      data_inicio: mission.data_inicio,
+      data_fim: mission.data_fim,
+      janela: getMissionWindowState(mission),
       quiz_modo_pontuacao: mission.quiz_modo_pontuacao || 'PROPORCIONAL',
+      quiz_tempo_segundos: tempoLimite,
     },
     perguntas,
+    sessao: sessao
+      ? {
+          iniciado_em: sessao.iniciado_em,
+          tempo_restante_segundos: tempoRestanteSegundos,
+        }
+      : null,
     minha_tentativa: attempt
       ? {
           id: attempt.id,
           acertos: attempt.acertos,
           total_perguntas: attempt.total_perguntas,
           pontos_obtidos: attempt.pontos_obtidos,
+          duracao_ms: attempt.duracao_ms,
           criado_em: attempt.criado_em,
         }
       : null,
+    historico,
+    ranking,
   };
 }
 
@@ -267,6 +398,7 @@ async function submitMissionQuiz({ missaoId, user, respostas }) {
   if (mission.status !== 'ABERTA') {
     throw new AppError('Quiz não está aberto para respostas.', 400);
   }
+  assertMissionWindow(mission);
 
   try {
     const tentativa = await quizRepository.submitQuizAttempt({
@@ -276,11 +408,20 @@ async function submitMissionQuiz({ missaoId, user, respostas }) {
       respostas,
     });
 
+    const historico = await quizRepository.getAttemptHistory(
+      missaoId,
+      user.id
+    );
+    const ranking = await quizRepository.getQuizRanking(missaoId, 15);
+
     return {
       ok: true,
       acertos: tentativa.acertos,
       total_perguntas: tentativa.total_perguntas,
       pontos_obtidos: tentativa.pontos_obtidos,
+      duracao_ms: tentativa.duracao_ms,
+      historico,
+      ranking,
       message: `Você acertou ${tentativa.acertos} de ${tentativa.total_perguntas} e somou ${tentativa.pontos_obtidos} ponto(s) para o seu time.`,
     };
   } catch (error) {
@@ -295,6 +436,15 @@ async function submitMissionQuiz({ missaoId, user, respostas }) {
     }
     throw error;
   }
+}
+
+async function getMissionQuizRanking(missaoId) {
+  const mission = await competitionRepository.findMissionById(missaoId);
+  if (!mission) throw new AppError('Missão não encontrada.', 404);
+  if (mission.tipo !== 'QUIZ') {
+    throw new AppError('Esta missão não é um quiz.', 400);
+  }
+  return quizRepository.getQuizRanking(missaoId, 30);
 }
 
 function listMissionSubmissions() {
@@ -346,9 +496,11 @@ module.exports = {
   updateMission,
   deleteMission,
   updateMissionStatus,
+  postMissionToFeed,
   submitMission,
   getMissionQuiz,
   submitMissionQuiz,
+  getMissionQuizRanking,
   listMissionSubmissions,
   reviewMissionSubmission,
   createFoodRecord,

@@ -123,6 +123,17 @@ async function findPostById(id) {
   return rows[0] || null;
 }
 
+async function findPostByMissionId(missaoId) {
+  const rows = await query(
+    `SELECT * FROM publicacoes
+     WHERE missao_id = ? AND tipo_publicacao = 'MISSAO_CONCLUIDA'
+     ORDER BY criado_em DESC
+     LIMIT 1`,
+    [missaoId]
+  );
+  return rows[0] || null;
+}
+
 async function deletePost(id) {
   await query('DELETE FROM publicacoes WHERE id = ?', [id]);
 }
@@ -337,6 +348,7 @@ module.exports = {
   listPosts,
   createPost,
   findPostById,
+  findPostByMissionId,
   deletePost,
   toggleLike,
   listComments,

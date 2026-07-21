@@ -27,6 +27,11 @@ router.patch(
   competitionController.updateMissionStatus
 );
 router.post(
+  '/missions/:id/feed-post',
+  requireRole('ADMIN'),
+  competitionController.postMissionToFeed
+);
+router.post(
   '/missions/:id/submit',
   requireRole('PARTICIPANTE', 'ADMIN'),
   uploadMedia.any(),
@@ -41,6 +46,11 @@ router.post(
   '/missions/:id/quiz/submit',
   requireRole('PARTICIPANTE', 'ADMIN'),
   competitionController.submitMissionQuiz
+);
+router.get(
+  '/missions/:id/quiz/ranking',
+  requireRole('PARTICIPANTE', 'ADMIN'),
+  competitionController.getMissionQuizRanking
 );
 router.get(
   '/mission-submissions',

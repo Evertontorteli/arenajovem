@@ -24,12 +24,16 @@ async function createMission(data) {
   if (tipo === 'QUIZ') {
     const quizRepository = require('./quizRepository');
     await quizRepository.ensureQuizSchema();
+    const quizTempo =
+      data.quiz_tempo_segundos !== undefined && data.quiz_tempo_segundos !== ''
+        ? Math.max(0, Number(data.quiz_tempo_segundos) || 0) || null
+        : null;
     return require('../config/db').withTransaction(async (client) => {
       const inserted = await queryOn(
         client,
         `INSERT INTO missoes
-          (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por, tipo, quiz_modo_pontuacao)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por, tipo, quiz_modo_pontuacao, quiz_tempo_segundos)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          RETURNING id`,
         [
           data.titulo,
@@ -42,6 +46,7 @@ async function createMission(data) {
           data.liberada_por || null,
           tipo,
           quizModo,
+          quizTempo,
         ]
       );
       const missaoId = inserted[0].id;
@@ -59,8 +64,8 @@ async function createMission(data) {
 
   const inserted = await query(
     `INSERT INTO missoes
-      (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por, tipo, quiz_modo_pontuacao)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por, tipo, quiz_modo_pontuacao, quiz_tempo_segundos)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING id`,
     [
       data.titulo,
@@ -73,6 +78,7 @@ async function createMission(data) {
       data.liberada_por || null,
       tipo,
       quizModo,
+      null,
     ]
   );
   const rows = await query('SELECT * FROM missoes WHERE id = ?', [inserted[0].id]);
