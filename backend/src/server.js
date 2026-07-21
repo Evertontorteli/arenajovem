@@ -28,6 +28,11 @@ async function ensureFeedIndexes() {
   await ensureIndexes();
 }
 
+async function ensureQuizSchema() {
+  const quizRepository = require('./repositories/quizRepository');
+  await quizRepository.ensureQuizSchema();
+}
+
 async function bootstrap() {
   try {
     if (
@@ -43,6 +48,7 @@ async function bootstrap() {
     await ensureUserColumns();
     await ensureMediaTable();
     await ensureFeedIndexes();
+    await ensureQuizSchema();
     await teamService.ensureDefaultTeams();
     await accessProfileService.ensureDefaultProfiles();
     const [adminCount] = await query(

@@ -1,19 +1,66 @@
-const { pool, query, queryOn } = require('../config/db');
+const { pool, query, queryOn, withTransaction } = require('../config/db');
 
 async function listMissions() {
+  const quizRepository = require('./quizRepository');
+  await quizRepository.ensureQuizSchema();
   return query(
     `SELECT m.*,
-      (SELECT COUNT(*)::int FROM envios_missao em WHERE em.missao_id = m.id) AS total_envios
+      (SELECT COUNT(*)::int FROM envios_missao em WHERE em.missao_id = m.id) AS total_envios,
+      (SELECT COUNT(*)::int FROM missao_perguntas mp WHERE mp.missao_id = m.id) AS total_perguntas,
+      (SELECT COUNT(*)::int FROM quiz_tentativas qt WHERE qt.missao_id = m.id) AS total_respostas_quiz
      FROM missoes m
      ORDER BY m.data_inicio DESC`
   );
 }
 
 async function createMission(data) {
+  const allowed = new Set(['FOTO', 'AUDIO', 'VIDEO', 'QUIZ']);
+  const tipo = allowed.has(data.tipo) ? data.tipo : 'FOTO';
+  const quizModo =
+    data.quiz_modo_pontuacao === 'TUDO_OU_NADA'
+      ? 'TUDO_OU_NADA'
+      : 'PROPORCIONAL';
+
+  if (tipo === 'QUIZ') {
+    const quizRepository = require('./quizRepository');
+    await quizRepository.ensureQuizSchema();
+    return require('../config/db').withTransaction(async (client) => {
+      const inserted = await queryOn(
+        client,
+        `INSERT INTO missoes
+          (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por, tipo, quiz_modo_pontuacao)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         RETURNING id`,
+        [
+          data.titulo,
+          data.descricao,
+          data.imagem_capa || null,
+          data.pontuacao,
+          data.data_inicio,
+          data.data_fim,
+          data.status || 'EM_ANALISE',
+          data.liberada_por || null,
+          tipo,
+          quizModo,
+        ]
+      );
+      const missaoId = inserted[0].id;
+      await quizRepository.replaceMissionQuestions(
+        client,
+        missaoId,
+        data.perguntas || []
+      );
+      const rows = await queryOn(client, 'SELECT * FROM missoes WHERE id = ?', [
+        missaoId,
+      ]);
+      return rows[0];
+    });
+  }
+
   const inserted = await query(
     `INSERT INTO missoes
-      (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      (titulo, descricao, imagem_capa, pontuacao, data_inicio, data_fim, status, liberada_por, tipo, quiz_modo_pontuacao)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING id`,
     [
       data.titulo,
@@ -24,6 +71,8 @@ async function createMission(data) {
       data.data_fim,
       data.status || 'EM_ANALISE',
       data.liberada_por || null,
+      tipo,
+      quizModo,
     ]
   );
   const rows = await query('SELECT * FROM missoes WHERE id = ?', [inserted[0].id]);
@@ -79,6 +128,95 @@ async function createMissionSubmission(data) {
   );
   const rows = await query('SELECT * FROM envios_missao WHERE id = ?', [inserted[0].id]);
   return rows[0];
+}
+
+async function findUserMissionSubmission(missaoId, usuarioId) {
+  const rows = await query(
+    `SELECT *
+     FROM envios_missao
+     WHERE missao_id = ? AND usuario_id = ?
+     ORDER BY criado_em DESC
+     LIMIT 1`,
+    [missaoId, usuarioId]
+  );
+  return rows[0] || null;
+}
+
+async function listSubmissionsForUser(usuarioId, missaoIds) {
+  if (!usuarioId || !missaoIds?.length) return new Map();
+  const placeholders = missaoIds.map(() => '?').join(',');
+  const rows = await query(
+    `SELECT DISTINCT ON (missao_id)
+        missao_id, id, status, pontuacao_creditada, criado_em
+     FROM envios_missao
+     WHERE usuario_id = ? AND missao_id IN (${placeholders})
+     ORDER BY missao_id, criado_em DESC`,
+    [usuarioId, ...missaoIds]
+  );
+  return new Map(rows.map((r) => [Number(r.missao_id), r]));
+}
+
+/**
+ * Envio com pontuação automática: 1 por usuário/missão, credita na hora.
+ */
+async function submitMissionAndCredit({
+  missao,
+  usuarioId,
+  equipeId,
+  imagemUrl,
+  legenda,
+}) {
+  return withTransaction(async (client) => {
+    const existing = await queryOn(
+      client,
+      `SELECT id FROM envios_missao
+       WHERE missao_id = ? AND usuario_id = ?
+       FOR UPDATE`,
+      [missao.id, usuarioId]
+    );
+    if (existing[0]) {
+      const err = new Error('Você já enviou esta missão.');
+      err.status = 409;
+      throw err;
+    }
+
+    const pontos = Math.max(0, Number(missao.pontuacao) || 0);
+    const inserted = await queryOn(
+      client,
+      `INSERT INTO envios_missao
+        (missao_id, usuario_id, equipe_id, imagem_url, legenda, status, pontuacao_creditada, revisado_em)
+       VALUES (?, ?, ?, ?, ?, 'APROVADA', 1, NOW())
+       RETURNING *`,
+      [missao.id, usuarioId, equipeId, imagemUrl, legenda || null]
+    );
+    const submission = inserted[0];
+
+    if (pontos > 0) {
+      await queryOn(
+        client,
+        `INSERT INTO pontuacoes
+          (equipe_id, pontos, tipo, motivo, observacao, referencia_tipo, referencia_id, criado_por)
+         VALUES (?, ?, 'ADICAO', 'Missão concluída', ?, 'ENVIO_MISSAO', ?, ?)`,
+        [
+          equipeId,
+          pontos,
+          `Pontuação automática (${missao.tipo || 'FOTO'})`,
+          submission.id,
+          usuarioId,
+        ]
+      );
+      await queryOn(
+        client,
+        'UPDATE equipes SET pontuacao = pontuacao + ? WHERE id = ?',
+        [pontos, equipeId]
+      );
+    }
+
+    return {
+      ...submission,
+      pontos_obtidos: pontos,
+    };
+  });
 }
 
 async function listMissionSubmissions() {
@@ -289,6 +427,9 @@ module.exports = {
   deleteMission,
   updateMissionStatus,
   createMissionSubmission,
+  findUserMissionSubmission,
+  listSubmissionsForUser,
+  submitMissionAndCredit,
   listMissionSubmissions,
   findSubmissionById,
   findMissionById,

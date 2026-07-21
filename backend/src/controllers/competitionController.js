@@ -1,19 +1,49 @@
 const asyncHandler = require('../utils/asyncHandler');
 const competitionService = require('../services/competitionService');
 const AppError = require('../utils/AppError');
-const { persistUpload } = require('../utils/persistUpload');
+const { persistMedia } = require('../utils/persistUpload');
 
-const listMissions = asyncHandler(async (_req, res) => {
-  const missions = await competitionService.listMissions();
+function pickFile(files, fieldname) {
+  if (!Array.isArray(files)) return null;
+  return files.find((file) => file.fieldname === fieldname) || null;
+}
+
+const listMissions = asyncHandler(async (req, res) => {
+  const missions = await competitionService.listMissions(req.user);
   res.json(missions);
 });
 
 const createMission = asyncHandler(async (req, res) => {
-  const imagemCapa = req.file
-    ? await persistUpload(req.file)
+  const files = req.files || [];
+  const capaFile = pickFile(files, 'imagem_capa') || req.file || null;
+  const imagemCapa = capaFile
+    ? (await persistMedia(capaFile)).url
     : req.body.imagem_capa || null;
+
+  let perguntas = req.body.perguntas;
+  if (typeof perguntas === 'string' && perguntas.trim()) {
+    try {
+      perguntas = JSON.parse(perguntas);
+    } catch (_error) {
+      throw new AppError('Formato inválido das perguntas do quiz.', 400);
+    }
+  }
+  if (Array.isArray(perguntas)) {
+    for (let i = 0; i < perguntas.length; i += 1) {
+      const midiaFile = pickFile(files, `pergunta_midia_${i}`);
+      if (!midiaFile) continue;
+      const saved = await persistMedia(midiaFile);
+      perguntas[i] = {
+        ...perguntas[i],
+        midia_url: saved.url,
+        midia_tipo: saved.kind,
+      };
+    }
+  }
+
   const mission = await competitionService.createMission({
     ...req.body,
+    perguntas,
     imagem_capa: imagemCapa,
     liberada_por: req.user.id,
   });
@@ -21,8 +51,10 @@ const createMission = asyncHandler(async (req, res) => {
 });
 
 const updateMission = asyncHandler(async (req, res) => {
-  const imagemCapa = req.file
-    ? await persistUpload(req.file)
+  const files = req.files || [];
+  const capaFile = pickFile(files, 'imagem_capa') || req.file || null;
+  const imagemCapa = capaFile
+    ? (await persistMedia(capaFile)).url
     : req.body.imagem_capa;
   const mission = await competitionService.updateMission(req.params.id, {
     ...req.body,
@@ -49,18 +81,34 @@ const submitMission = asyncHandler(async (req, res) => {
   if (!req.user.equipe_id) {
     throw new AppError('Você precisa estar em uma equipe para enviar missão.', 400);
   }
-  if (!req.file) {
-    throw new AppError('Selecione uma imagem para o envio.', 400);
+  const file = req.file || pickFile(req.files || [], 'imagem') || pickFile(req.files || [], 'midia');
+  if (!file) {
+    throw new AppError('Selecione um arquivo para o envio.', 400);
   }
-  const imagemUrl = await persistUpload(req.file);
+  const saved = await persistMedia(file);
   const submission = await competitionService.submitMission({
     missao_id: req.params.id,
     usuario_id: req.user.id,
     equipe_id: req.user.equipe_id,
-    imagem_url: imagemUrl,
+    imagem_url: saved.url,
+    midia_kind: saved.kind,
     legenda: req.body.legenda,
   });
   res.status(201).json(submission);
+});
+
+const getMissionQuiz = asyncHandler(async (req, res) => {
+  const quiz = await competitionService.getMissionQuiz(req.params.id, req.user);
+  res.json(quiz);
+});
+
+const submitMissionQuiz = asyncHandler(async (req, res) => {
+  const result = await competitionService.submitMissionQuiz({
+    missaoId: req.params.id,
+    user: req.user,
+    respostas: req.body.respostas,
+  });
+  res.status(201).json(result);
 });
 
 const listMissionSubmissions = asyncHandler(async (_req, res) => {
@@ -133,6 +181,8 @@ module.exports = {
   deleteMission,
   updateMissionStatus,
   submitMission,
+  getMissionQuiz,
+  submitMissionQuiz,
   listMissionSubmissions,
   reviewMissionSubmission,
   createFoodRecord,

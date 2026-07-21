@@ -45,10 +45,51 @@ CREATE TABLE IF NOT EXISTS missoes (
   data_inicio TIMESTAMP NOT NULL,
   data_fim TIMESTAMP NOT NULL,
   status VARCHAR(20) DEFAULT 'EM_ANALISE' CHECK (status IN ('ABERTA', 'ENCERRADA', 'EM_ANALISE')),
+  tipo VARCHAR(20) NOT NULL DEFAULT 'FOTO' CHECK (tipo IN ('FOTO', 'AUDIO', 'VIDEO', 'QUIZ')),
+  quiz_modo_pontuacao VARCHAR(20) NOT NULL DEFAULT 'PROPORCIONAL' CHECK (quiz_modo_pontuacao IN ('PROPORCIONAL', 'TUDO_OU_NADA')),
   liberada_por INT,
   liberada_em TIMESTAMP,
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (liberada_por) REFERENCES usuarios(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS missao_perguntas (
+  id SERIAL PRIMARY KEY,
+  missao_id INT NOT NULL REFERENCES missoes(id) ON DELETE CASCADE,
+  enunciado TEXT NOT NULL,
+  ordem INT NOT NULL DEFAULT 0,
+  midia_url TEXT,
+  midia_tipo VARCHAR(20),
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS missao_alternativas (
+  id SERIAL PRIMARY KEY,
+  pergunta_id INT NOT NULL REFERENCES missao_perguntas(id) ON DELETE CASCADE,
+  texto TEXT NOT NULL,
+  correta SMALLINT NOT NULL DEFAULT 0,
+  ordem INT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS quiz_tentativas (
+  id SERIAL PRIMARY KEY,
+  missao_id INT NOT NULL REFERENCES missoes(id) ON DELETE CASCADE,
+  usuario_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+  equipe_id INT NOT NULL REFERENCES equipes(id) ON DELETE CASCADE,
+  acertos INT NOT NULL DEFAULT 0,
+  total_perguntas INT NOT NULL DEFAULT 0,
+  pontos_obtidos INT NOT NULL DEFAULT 0,
+  criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE (missao_id, usuario_id)
+);
+
+CREATE TABLE IF NOT EXISTS quiz_respostas (
+  id SERIAL PRIMARY KEY,
+  tentativa_id INT NOT NULL REFERENCES quiz_tentativas(id) ON DELETE CASCADE,
+  pergunta_id INT NOT NULL REFERENCES missao_perguntas(id) ON DELETE CASCADE,
+  alternativa_id INT NOT NULL REFERENCES missao_alternativas(id) ON DELETE CASCADE,
+  correta SMALLINT NOT NULL DEFAULT 0,
+  UNIQUE (tentativa_id, pergunta_id)
 );
 
 CREATE TABLE IF NOT EXISTS envios_missao (

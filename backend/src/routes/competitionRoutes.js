@@ -1,7 +1,7 @@
 const express = require('express');
 const competitionController = require('../controllers/competitionController');
 const { requireAuth, requireRole } = require('../middlewares/authMiddleware');
-const upload = require('../middlewares/uploadMiddleware');
+const { uploadMedia } = require('../middlewares/uploadMediaMiddleware');
 
 const router = express.Router();
 
@@ -11,13 +11,13 @@ router.get('/missions', competitionController.listMissions);
 router.post(
   '/missions',
   requireRole('ADMIN'),
-  upload.single('imagem_capa'),
+  uploadMedia.any(),
   competitionController.createMission
 );
 router.put(
   '/missions/:id',
   requireRole('ADMIN'),
-  upload.single('imagem_capa'),
+  uploadMedia.any(),
   competitionController.updateMission
 );
 router.delete('/missions/:id', requireRole('ADMIN'), competitionController.deleteMission);
@@ -29,8 +29,18 @@ router.patch(
 router.post(
   '/missions/:id/submit',
   requireRole('PARTICIPANTE', 'ADMIN'),
-  upload.single('imagem'),
+  uploadMedia.any(),
   competitionController.submitMission
+);
+router.get(
+  '/missions/:id/quiz',
+  requireRole('PARTICIPANTE', 'ADMIN'),
+  competitionController.getMissionQuiz
+);
+router.post(
+  '/missions/:id/quiz/submit',
+  requireRole('PARTICIPANTE', 'ADMIN'),
+  competitionController.submitMissionQuiz
 );
 router.get(
   '/mission-submissions',
