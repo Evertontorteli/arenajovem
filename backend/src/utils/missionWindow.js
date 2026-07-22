@@ -1,12 +1,15 @@
 const AppError = require('./AppError');
+const {
+  brazilDateTimeToUtcMs,
+  nowBrazilUtcMs,
+} = require('./brazilDateTime');
 
-function getMissionWindowState(mission) {
-  const now = Date.now();
-  const inicio = new Date(mission?.data_inicio).getTime();
-  const fim = new Date(mission?.data_fim).getTime();
+function getMissionWindowState(mission, nowMs = nowBrazilUtcMs()) {
+  const inicio = brazilDateTimeToUtcMs(mission?.data_inicio);
+  const fim = brazilDateTimeToUtcMs(mission?.data_fim);
 
-  if (Number.isFinite(inicio) && now < inicio) return 'AINDA_NAO_COMECOU';
-  if (Number.isFinite(fim) && now > fim) return 'ENCERRADA_PRAZO';
+  if (Number.isFinite(inicio) && nowMs < inicio) return 'AINDA_NAO_COMECOU';
+  if (Number.isFinite(fim) && nowMs > fim) return 'ENCERRADA_PRAZO';
   return 'NO_PRAZO';
 }
 

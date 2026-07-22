@@ -1,10 +1,29 @@
 const { pool, query, queryOn, withTransaction } = require('../config/db');
+const { toBrazilDbTimestamp } = require('../utils/brazilDateTime');
+
+const MISSION_TIME_SELECT = `
+  to_char(m.data_inicio, 'YYYY-MM-DD"T"HH24:MI:SS') AS data_inicio,
+  to_char(m.data_fim, 'YYYY-MM-DD"T"HH24:MI:SS') AS data_fim
+`;
+
+async function findMissionRowById(id, client = null) {
+  const run = client ? (sql, params) => queryOn(client, sql, params) : query;
+  const rows = await run(
+    `SELECT m.*,
+      ${MISSION_TIME_SELECT}
+     FROM missoes m
+     WHERE m.id = ?`,
+    [id]
+  );
+  return rows[0] || null;
+}
 
 async function listMissions() {
   const quizRepository = require('./quizRepository');
   await quizRepository.ensureQuizSchema();
   return query(
     `SELECT m.*,
+      ${MISSION_TIME_SELECT},
       (SELECT COUNT(*)::int FROM envios_missao em WHERE em.missao_id = m.id) AS total_envios,
       (SELECT COUNT(*)::int FROM missao_perguntas mp WHERE mp.missao_id = m.id) AS total_perguntas,
       (SELECT COUNT(*)::int FROM quiz_tentativas qt WHERE qt.missao_id = m.id) AS total_respostas_quiz
@@ -46,8 +65,8 @@ async function createMission(data) {
           data.descricao,
           data.imagem_capa || null,
           data.pontuacao,
-          data.data_inicio,
-          data.data_fim,
+          toBrazilDbTimestamp(data.data_inicio) || data.data_inicio,
+          toBrazilDbTimestamp(data.data_fim) || data.data_fim,
           data.status || 'EM_ANALISE',
           data.liberada_por || null,
           tipo,
@@ -62,10 +81,7 @@ async function createMission(data) {
         missaoId,
         data.perguntas || []
       );
-      const rows = await queryOn(client, 'SELECT * FROM missoes WHERE id = ?', [
-        missaoId,
-      ]);
-      return rows[0];
+      return findMissionRowById(missaoId, client);
     });
   }
 
@@ -79,8 +95,8 @@ async function createMission(data) {
       data.descricao,
       data.imagem_capa || null,
       data.pontuacao,
-      data.data_inicio,
-      data.data_fim,
+      toBrazilDbTimestamp(data.data_inicio) || data.data_inicio,
+      toBrazilDbTimestamp(data.data_fim) || data.data_fim,
       data.status || 'EM_ANALISE',
       data.liberada_por || null,
       tipo,
@@ -89,8 +105,7 @@ async function createMission(data) {
       null,
     ]
   );
-  const rows = await query('SELECT * FROM missoes WHERE id = ?', [inserted[0].id]);
-  return rows[0];
+  return findMissionRowById(inserted[0].id);
 }
 
 async function updateMission(id, data) {
@@ -141,8 +156,8 @@ async function updateMission(id, data) {
           data.descricao || null,
           data.imagem_capa || null,
           data.pontuacao ?? null,
-          data.data_inicio || null,
-          data.data_fim || null,
+          toBrazilDbTimestamp(data.data_inicio) || data.data_inicio || null,
+          toBrazilDbTimestamp(data.data_fim) || data.data_fim || null,
           quizModo,
           quizTempo,
           quizDificuldade,
@@ -167,8 +182,8 @@ async function updateMission(id, data) {
           data.descricao || null,
           data.imagem_capa || null,
           data.pontuacao ?? null,
-          data.data_inicio || null,
-          data.data_fim || null,
+          toBrazilDbTimestamp(data.data_inicio) || data.data_inicio || null,
+          toBrazilDbTimestamp(data.data_fim) || data.data_fim || null,
           quizModo,
           quizDificuldade,
           id,
@@ -192,8 +207,7 @@ async function updateMission(id, data) {
       await quizRepository.replaceMissionQuestions(client, id, data.perguntas);
     }
 
-    const rows = await queryOn(client, 'SELECT * FROM missoes WHERE id = ?', [id]);
-    return rows[0];
+    return findMissionRowById(id, client);
   });
 }
 
@@ -208,8 +222,7 @@ async function updateMissionStatus(id, status, userId) {
      WHERE id = ?`,
     [status, userId, id]
   );
-  const rows = await query('SELECT * FROM missoes WHERE id = ?', [id]);
-  return rows[0];
+  return findMissionRowById(id);
 }
 
 async function createMissionSubmission(data) {
@@ -330,8 +343,7 @@ async function findSubmissionById(id) {
 }
 
 async function findMissionById(id) {
-  const rows = await query('SELECT * FROM missoes WHERE id = ?', [id]);
-  return rows[0] || null;
+  return findMissionRowById(id);
 }
 
 async function reviewMissionSubmission({

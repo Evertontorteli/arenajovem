@@ -4,6 +4,10 @@ import http from '../api/http';
 import UserAvatar from '../components/UserAvatar';
 import { useAuth } from '../contexts/AuthContext';
 import { resolveMediaUrl } from '../utils/avatarPresets';
+import {
+  formatBrazilDisplay,
+  toDatetimeLocalBrazil,
+} from '../utils/brazilDateTime';
 import { getTeamThemeByLabel } from '../utils/teamColors';
 
 const emptyQuestion = () => ({
@@ -62,11 +66,7 @@ function windowLabel(mission) {
 }
 
 function toDatetimeLocalValue(value) {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return toDatetimeLocalBrazil(value);
 }
 
 function emptyFormState() {
@@ -750,7 +750,8 @@ function MissionsPage() {
                 <div>
                   <h3 className="text-sm font-semibold text-zinc-900">Pontos e prazo</h3>
                   <p className="mt-0.5 text-xs text-zinc-500">
-                    Defina a recompensa e a janela em que a missão fica aberta.
+                    Defina a recompensa e a janela em que a missão fica aberta
+                    (horário de Brasília).
                   </p>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-3">
@@ -769,7 +770,7 @@ function MissionsPage() {
                     />
                   </label>
                   <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                    Início
+                    Início (Brasília)
                     <input
                       className="ig-input"
                       type="datetime-local"
@@ -781,7 +782,7 @@ function MissionsPage() {
                     />
                   </label>
                   <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                    Fim
+                    Fim (Brasília)
                     <input
                       className="ig-input"
                       type="datetime-local"
@@ -1138,8 +1139,8 @@ function MissionsPage() {
                   {mission.tipo === 'QUIZ' && mission.quiz_tempo_segundos
                     ? ` · ${mission.quiz_tempo_segundos}s`
                     : ''}{' '}
-                  • {new Date(mission.data_inicio).toLocaleString('pt-BR')} —{' '}
-                  {new Date(mission.data_fim).toLocaleString('pt-BR')}
+                  • {formatBrazilDisplay(mission.data_inicio)} —{' '}
+                  {formatBrazilDisplay(mission.data_fim)}
                 </small>
 
                 {mission.tipo === 'QUIZ' && mission.minha_tentativa ? (
