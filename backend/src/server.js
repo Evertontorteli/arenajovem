@@ -1,22 +1,11 @@
 const app = require('./app');
 const { query } = require('./config/db');
+const { ensureUserSchema } = require('./database/ensureUserSchema');
 const teamService = require('./services/teamService');
 const accessProfileService = require('./services/accessProfileService');
 const bcrypt = require('bcryptjs');
 
 const PORT = Number(process.env.PORT || 3333);
-
-async function ensureUserColumns() {
-  const requiredColumns = [
-    'ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS telefone VARCHAR(20)',
-    'ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS google_sub VARCHAR(64) UNIQUE',
-    'ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS acessos JSONB',
-  ];
-
-  for (const ddl of requiredColumns) {
-    await query(ddl);
-  }
-}
 
 async function ensureMediaTable() {
   const mediaRepository = require('./repositories/mediaRepository');
@@ -45,7 +34,7 @@ async function bootstrap() {
     }
 
     await query('SELECT 1');
-    await ensureUserColumns();
+    await ensureUserSchema();
     await ensureMediaTable();
     await ensureFeedIndexes();
     await ensureQuizSchema();
@@ -68,6 +57,14 @@ async function bootstrap() {
           senhaHash,
         ]
       );
+    }
+
+    try {
+      const welcomePostService = require('./services/welcomePostService');
+      await welcomePostService.ensureWelcomePost();
+    } catch (welcomeError) {
+      // eslint-disable-next-line no-console
+      console.warn('Post de boas-vindas não criado:', welcomeError.message);
     }
 
     const testEmail = process.env.DEFAULT_TEST_EMAIL || 'teste@arenajovem.com';

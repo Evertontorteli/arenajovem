@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs');
 const userRepository = require('../repositories/userRepository');
 const teamRepository = require('../repositories/teamRepository');
 const { normalizePhone } = require('./authService');
+const { isValidFullName, normalizeFullName } = require('../utils/fullName');
 
 async function getMe(userId) {
   const user = await userRepository.findById(userId);
@@ -15,10 +16,18 @@ function listUsers() {
 }
 
 async function updateProfile(userId, data) {
-  if (data.telefone) {
-    data.telefone = normalizePhone(data.telefone);
+  const payload = { ...data };
+  if (Object.prototype.hasOwnProperty.call(payload, 'nome')) {
+    const nome = normalizeFullName(payload.nome);
+    if (!isValidFullName(nome)) {
+      throw new AppError('Informe nome e sobrenome.', 400);
+    }
+    payload.nome = nome;
   }
-  return userRepository.updateProfile(userId, data);
+  if (payload.telefone) {
+    payload.telefone = normalizePhone(payload.telefone);
+  }
+  return userRepository.updateProfile(userId, payload);
 }
 
 async function changePassword(userId, { senhaAtual, senhaNova, confirmarSenha }) {
@@ -121,6 +130,24 @@ async function updateAccess(actorUserId, targetUserId, data) {
   });
 }
 
+async function deleteMyAccount(userId) {
+  const user = await userRepository.findById(userId);
+  if (!user) throw new AppError('Usuário não encontrado.', 404);
+
+  if (user.role === 'ADMIN') {
+    const adminCount = await userRepository.countAdmins();
+    if (adminCount <= 1) {
+      throw new AppError(
+        'Não é possível apagar a conta do último administrador.',
+        400
+      );
+    }
+  }
+
+  await userRepository.deleteById(userId);
+  return { ok: true, message: 'Conta apagada com sucesso.' };
+}
+
 module.exports = {
   getMe,
   listUsers,
@@ -128,4 +155,5 @@ module.exports = {
   changePassword,
   updateTeam,
   updateAccess,
+  deleteMyAccount,
 };

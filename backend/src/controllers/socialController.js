@@ -50,12 +50,15 @@ const listComments = asyncHandler(async (req, res) => {
 });
 
 const createComment = asyncHandler(async (req, res) => {
-  const comment = await socialService.createComment({
-    publicacao_id: req.params.id,
-    usuario_id: req.user.id,
-    texto: req.body.texto,
-    parent_id: req.body.parent_id || null,
-  });
+  const comment = await socialService.createComment(
+    {
+      publicacao_id: req.params.id,
+      usuario_id: req.user.id,
+      texto: req.body.texto,
+      parent_id: req.body.parent_id || null,
+    },
+    req.user
+  );
   res.status(201).json(comment);
 });
 
@@ -110,6 +113,16 @@ const readNotification = asyncHandler(async (req, res) => {
   res.status(204).send();
 });
 
+const getWelcomePost = asyncHandler(async (_req, res) => {
+  const meta = await socialService.getWelcomePostMeta();
+  res.json(meta);
+});
+
+const updateWelcomePost = asyncHandler(async (req, res) => {
+  const meta = await socialService.updateWelcomePostStatus(req.body.status);
+  res.json(meta);
+});
+
 module.exports = {
   listPosts,
   createPost,
@@ -126,4 +139,6 @@ module.exports = {
   deleteNews,
   listNotifications,
   readNotification,
+  getWelcomePost,
+  updateWelcomePost,
 };

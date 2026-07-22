@@ -1,16 +1,20 @@
 import { useEffect, useState } from 'react';
 import { FaSignOutAlt } from 'react-icons/fa';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import http from '../api/http';
 import AvatarPicker from '../components/AvatarPicker';
 import UserAvatar from '../components/UserAvatar';
+import { isValidFullName, normalizeFullName } from '../utils/fullName';
 
 function ProfilePage() {
-  const { user, refreshUser, logout } = useAuth();
+  const { user, refreshUser, logout, deleteAccount } = useAuth();
   const [nome, setNome] = useState(user?.nome || '');
   const [foto, setFoto] = useState(user?.foto || '');
   const [notifications, setNotifications] = useState([]);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [profileError, setProfileError] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
   const [senhaAtual, setSenhaAtual] = useState('');
   const [senhaNova, setSenhaNova] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
@@ -33,11 +37,23 @@ function ProfilePage() {
 
   const saveProfile = async (event) => {
     event.preventDefault();
+    const nomeCompleto = normalizeFullName(nome);
+    if (!isValidFullName(nomeCompleto)) {
+      setProfileError('Informe nome e sobrenome.');
+      return;
+    }
+
     setSavingProfile(true);
+    setProfileError('');
     try {
-      await http.put('/users/me', { nome });
+      await http.put('/users/me', { nome: nomeCompleto });
       await refreshUser();
       alert('Perfil atualizado.');
+    } catch (requestError) {
+      setProfileError(
+        requestError?.response?.data?.message ||
+          'Não foi possível salvar o perfil.'
+      );
     } finally {
       setSavingProfile(false);
     }
@@ -85,6 +101,29 @@ function ProfilePage() {
     await refreshUser();
   };
 
+  const handleDeleteAccount = async () => {
+    const confirmed = window.confirm(
+      'Apagar sua conta permanentemente? Seus dados de cadastro serão removidos. Esta ação não pode ser desfeita.'
+    );
+    if (!confirmed) return;
+    const typed = window.prompt('Digite APAGAR para confirmar:');
+    if (String(typed || '').trim().toUpperCase() !== 'APAGAR') {
+      return;
+    }
+
+    setDeletingAccount(true);
+    try {
+      await deleteAccount();
+    } catch (requestError) {
+      alert(
+        requestError?.response?.data?.message ||
+          'Não foi possível apagar a conta.'
+      );
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
   return (
     <section className="space-y-4">
       <header>
@@ -106,8 +145,9 @@ function ProfilePage() {
                   className="ig-input"
                   value={nome}
                   onChange={(e) => setNome(e.target.value)}
-                  placeholder="Nome"
-                  aria-label="Nome"
+                  placeholder="Nome e sobrenome"
+                  aria-label="Nome e sobrenome"
+                  autoComplete="name"
                 />
                 <p className="mt-1 truncate text-xs text-zinc-500">
                   @{(nome || user?.nome || '').replace(/\s+/g, '').toLowerCase()}
@@ -115,6 +155,9 @@ function ProfilePage() {
                 </p>
               </div>
             </div>
+            {profileError ? (
+              <p className="text-sm text-rose-500">{profileError}</p>
+            ) : null}
             <button type="submit" className="ig-button" disabled={savingProfile}>
               {savingProfile ? 'Salvando...' : 'Salvar perfil'}
             </button>
@@ -180,6 +223,28 @@ function ProfilePage() {
             <FaSignOutAlt />
             Sair da conta
           </button>
+
+          <div className="ig-card space-y-3 p-4">
+            <h3 className="text-base font-semibold text-zinc-900">Privacidade</h3>
+            <p className="text-sm text-zinc-500">
+              Você pode ler o aviso LGPD e apagar sua conta a qualquer momento.
+              O Arena Jovem é temporário e pode sair do ar após o evento.
+            </p>
+            <Link
+              to="/privacidade"
+              className="inline-block text-sm font-semibold text-blue-600 hover:underline"
+            >
+              Ver Aviso de Privacidade e LGPD
+            </Link>
+            <button
+              type="button"
+              onClick={handleDeleteAccount}
+              disabled={deletingAccount}
+              className="w-full rounded-lg border border-rose-200 bg-rose-50 px-4 py-2.5 text-sm font-medium text-rose-700 transition hover:bg-rose-100 disabled:opacity-50"
+            >
+              {deletingAccount ? 'Apagando conta...' : 'Apagar minha conta'}
+            </button>
+          </div>
 
           <div className="ig-card p-4">
             <h3 className="mb-3 text-base font-semibold text-zinc-900">Notificações</h3>

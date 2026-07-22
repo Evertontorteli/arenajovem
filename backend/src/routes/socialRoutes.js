@@ -30,4 +30,11 @@ router.delete('/news/:id', requireRole('ADMIN'), socialController.deleteNews);
 router.get('/notifications', socialController.listNotifications);
 router.patch('/notifications/:id/read', socialController.readNotification);
 
+router.get('/welcome-post', requireRole('ADMIN'), socialController.getWelcomePost);
+router.patch(
+  '/welcome-post',
+  requireRole('ADMIN'),
+  socialController.updateWelcomePost
+);
+
 module.exports = router;

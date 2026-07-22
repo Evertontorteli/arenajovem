@@ -1,5 +1,6 @@
 const AppError = require('../utils/AppError');
 const socialRepository = require('../repositories/socialRepository');
+const welcomePostService = require('./welcomePostService');
 
 function listPosts(pagination) {
   return socialRepository.listPosts(pagination);
@@ -22,6 +23,11 @@ function createPost(data, actor = {}) {
 }
 
 async function deletePost(postId, user) {
+  const welcomePostId = await welcomePostService.getWelcomePostId();
+  if (welcomePostId && Number(postId) === Number(welcomePostId)) {
+    throw new AppError('O post oficial da Arena não pode ser excluído.', 403);
+  }
+
   const post = await socialRepository.findPostById(postId);
   if (!post) throw new AppError('Publicação não encontrada.', 404);
   if (Number(post.autor_id) !== Number(user.id)) {
@@ -53,7 +59,7 @@ function listComments(postId, pagination) {
   return socialRepository.listComments(postId, pagination);
 }
 
-async function createComment(data) {
+async function createComment(data, actor = {}) {
   const texto = String(data.texto || '').trim();
   if (!texto) {
     throw new AppError('Escreva um comentário.', 400);
@@ -74,12 +80,23 @@ async function createComment(data) {
     }
   }
 
-  return socialRepository.createComment({
+  const comment = await socialRepository.createComment({
     publicacao_id: data.publicacao_id,
     usuario_id: data.usuario_id,
     parent_id: parentId,
     texto,
   });
+
+  const credit = await welcomePostService.maybeCreditWelcomeComment({
+    comment,
+    actor,
+  });
+
+  return {
+    ...comment,
+    pontos_creditados: credit?.pontos || 0,
+    missao_chegada_concluida: Boolean(credit?.pontos),
+  };
 }
 
 async function updateComment(commentId, user, texto) {
@@ -139,6 +156,30 @@ function readNotification(id, userId) {
   return socialRepository.markNotificationAsRead(id, userId);
 }
 
+async function updateWelcomePostStatus(status) {
+  await welcomePostService.ensureWelcomePost();
+  const next = await welcomePostService.setWelcomeStatus(status);
+  const id = await welcomePostService.getWelcomePostId();
+  return {
+    id,
+    status: next,
+    boas_vindas_fixado: next === welcomePostService.WELCOME_STATUS.PINNED,
+    boas_vindas_arquivado: next === welcomePostService.WELCOME_STATUS.ARCHIVED,
+  };
+}
+
+async function getWelcomePostMeta() {
+  await welcomePostService.ensureWelcomePost();
+  const id = await welcomePostService.getWelcomePostId();
+  const status = await welcomePostService.getWelcomeStatus();
+  return {
+    id,
+    status,
+    boas_vindas_fixado: status === welcomePostService.WELCOME_STATUS.PINNED,
+    boas_vindas_arquivado: status === welcomePostService.WELCOME_STATUS.ARCHIVED,
+  };
+}
+
 module.exports = {
   listPosts,
   createPost,
@@ -155,4 +196,6 @@ module.exports = {
   deleteNews,
   listNotifications,
   readNotification,
+  updateWelcomePostStatus,
+  getWelcomePostMeta,
 };

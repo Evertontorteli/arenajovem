@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS usuarios (
   foto TEXT,
   equipe_id INT,
   acessos JSONB,
+  lgpd_aceito_em TIMESTAMP,
+  lgpd_versao VARCHAR(20),
   criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (equipe_id) REFERENCES equipes(id) ON DELETE SET NULL
 );

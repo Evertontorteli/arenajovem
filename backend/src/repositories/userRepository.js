@@ -102,6 +102,10 @@ async function countAdmins() {
   return Number(rows[0]?.total || 0);
 }
 
+async function deleteById(id) {
+  await query('DELETE FROM usuarios WHERE id = ?', [id]);
+}
+
 module.exports = {
   findById,
   findAuthById,
@@ -111,4 +115,5 @@ module.exports = {
   updateUserTeam,
   updateUserAccess,
   countAdmins,
+  deleteById,
 };

@@ -39,12 +39,13 @@ export function AuthProvider({ children }) {
     return data.user;
   };
 
-  const signup = async ({ nome, email, senha, telefone }) => {
+  const signup = async ({ nome, email, senha, telefone, aceite_lgpd }) => {
     const { data } = await http.post('/auth/signup', {
       nome,
       email,
       senha,
       telefone,
+      aceite_lgpd,
     });
     localStorage.setItem('arena_token', data.token);
     setUser(data.user);
@@ -52,6 +53,12 @@ export function AuthProvider({ children }) {
   };
 
   const logout = () => {
+    localStorage.removeItem('arena_token');
+    setUser(null);
+  };
+
+  const deleteAccount = async () => {
+    await http.delete('/users/me');
     localStorage.removeItem('arena_token');
     setUser(null);
   };
@@ -96,6 +103,7 @@ export function AuthProvider({ children }) {
       login,
       signup,
       logout,
+      deleteAccount,
       refreshUser: async () => {
         const { data } = await http.get('/users/me');
         setUser(data);

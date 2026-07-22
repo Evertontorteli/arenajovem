@@ -3,6 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import logoArena from '../assets/logoArena.png';
 import { useAuth } from '../contexts/AuthContext';
 import { getPostLoginRoute } from '../utils/accessPermissions';
+import { isValidFullName, normalizeFullName } from '../utils/fullName';
+import { getLgpdAcceptLabel } from '../content/lgpd';
 
 function RegisterPage() {
   const { user, signup } = useAuth();
@@ -12,6 +14,7 @@ function RegisterPage() {
   const [telefone, setTelefone] = useState('');
   const [senha, setSenha] = useState('');
   const [confirmarSenha, setConfirmarSenha] = useState('');
+  const [aceiteLgpd, setAceiteLgpd] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -22,6 +25,11 @@ function RegisterPage() {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    const nomeCompleto = normalizeFullName(nome);
+    if (!isValidFullName(nomeCompleto)) {
+      setError('Informe nome e sobrenome.');
+      return;
+    }
     if (senha.length < 6) {
       setError('A senha precisa ter pelo menos 6 caracteres.');
       return;
@@ -30,11 +38,21 @@ function RegisterPage() {
       setError('As senhas não conferem.');
       return;
     }
+    if (!aceiteLgpd) {
+      setError('Para criar a conta, é necessário aceitar o Aviso de Privacidade e LGPD.');
+      return;
+    }
 
     setLoading(true);
     setError('');
     try {
-      const createdUser = await signup({ nome, email, senha, telefone });
+      const createdUser = await signup({
+        nome: nomeCompleto,
+        email,
+        senha,
+        telefone,
+        aceite_lgpd: true,
+      });
       navigate(getPostLoginRoute(createdUser));
     } catch (requestError) {
       const message =
@@ -65,7 +83,8 @@ function RegisterPage() {
             type="text"
             value={nome}
             onChange={(event) => setNome(event.target.value)}
-            placeholder="Nome completo"
+            placeholder="Nome e sobrenome"
+            autoComplete="name"
             required
           />
           <input
@@ -99,8 +118,35 @@ function RegisterPage() {
             placeholder="Confirmar senha"
             required
           />
+
+          <label className="mt-1 flex items-start gap-2 text-left text-xs leading-snug text-zinc-600">
+            <input
+              type="checkbox"
+              className="mt-0.5 h-4 w-4 shrink-0 accent-zinc-900"
+              checked={aceiteLgpd}
+              onChange={(event) => setAceiteLgpd(event.target.checked)}
+              required
+            />
+            <span>
+              {getLgpdAcceptLabel()}{' '}
+              <Link
+                to="/privacidade"
+                className="font-semibold text-blue-600 hover:underline"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Ler documento completo
+              </Link>
+              .
+            </span>
+          </label>
+
           {error ? <span className="text-sm text-rose-500">{error}</span> : null}
-          <button className="ig-button w-full" type="submit" disabled={loading}>
+          <button
+            className="ig-button w-full"
+            type="submit"
+            disabled={loading || !aceiteLgpd}
+          >
             {loading ? 'Criando conta...' : 'Criar conta'}
           </button>
         </form>

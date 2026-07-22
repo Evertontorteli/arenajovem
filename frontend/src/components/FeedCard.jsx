@@ -38,11 +38,19 @@ function FeedCard({ post, onRefresh }) {
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
   const [showLikeBurst, setShowLikeBurst] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [actionSuccess, setActionSuccess] = useState('');
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [isDeleteWarningOpen, setIsDeleteWarningOpen] = useState(false);
+  const [welcomeStatusBusy, setWelcomeStatusBusy] = useState(false);
+  const [alreadyCreditedArrival, setAlreadyCreditedArrival] = useState(
+    Boolean(post.usuario_ja_pontuou_chegada)
+  );
 
+  const isWelcomePost = Boolean(post.eh_boas_vindas || post.missao_chegada);
+  const isAdminUser = user?.role === 'ADMIN';
+  const welcomeStatus = post.boas_vindas_status || 'pinned';
   const canDeletePost =
-    user && Number(user.id) === Number(post.autor_id);
+    user && Number(user.id) === Number(post.autor_id) && !isWelcomePost;
 
   const loadPreviewComments = async () => {
     // Preview já vem no feed; só recarrega se precisar atualizar após ação.
@@ -78,6 +86,10 @@ function FeedCard({ post, onRefresh }) {
       else setCommentsLoading(false);
     }
   };
+
+  useEffect(() => {
+    setAlreadyCreditedArrival(Boolean(post.usuario_ja_pontuou_chegada));
+  }, [post.id, post.usuario_ja_pontuou_chegada]);
 
   useEffect(() => {
     const preview = post.comentarios_preview;
@@ -196,15 +208,22 @@ function FeedCard({ post, onRefresh }) {
     const texto = commentText.trim();
     if (!texto) return;
     setActionError('');
+    setActionSuccess('');
 
     try {
       if (editingComment) {
         await http.put(`/social/comments/${editingComment.id}`, { texto });
       } else {
-        await http.post(`/social/posts/${post.id}/comments`, {
+        const { data } = await http.post(`/social/posts/${post.id}/comments`, {
           texto,
           parent_id: replyTo?.id || null,
         });
+        if (data?.missao_chegada_concluida && data?.pontos_creditados > 0) {
+          setAlreadyCreditedArrival(true);
+          setActionSuccess(
+            `Missão Cheguei na Arena! +${data.pontos_creditados} pts para sua equipe.`
+          );
+        }
       }
       setCommentText('');
       setReplyTo(null);
@@ -232,6 +251,30 @@ function FeedCard({ post, onRefresh }) {
       setActionError(
         error?.response?.data?.message || 'Não foi possível excluir o comentário.'
       );
+    }
+  };
+
+  const updateWelcomeStatus = async (status) => {
+    if (!isAdminUser || welcomeStatusBusy) return;
+    setWelcomeStatusBusy(true);
+    setActionError('');
+    setActionSuccess('');
+    try {
+      await http.patch('/social/welcome-post', { status });
+      const labels = {
+        unpinned: 'Post oficial desafixado — volta à ordem do feed.',
+        archived: 'Post oficial arquivado e removido do feed.',
+        pinned: 'Post oficial fixado novamente no topo.',
+      };
+      setActionSuccess(labels[status] || 'Status atualizado.');
+      onRefresh?.();
+    } catch (error) {
+      setActionError(
+        error?.response?.data?.message ||
+          'Não foi possível atualizar o post oficial.'
+      );
+    } finally {
+      setWelcomeStatusBusy(false);
     }
   };
 
@@ -332,6 +375,11 @@ function FeedCard({ post, onRefresh }) {
                 Missão Concluída
               </span>
             ) : null}
+            {isWelcomePost ? (
+              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs text-amber-700">
+                Missão 0 · Cheguei
+              </span>
+            ) : null}
             {canDeletePost ? (
               <button
                 type="button"
@@ -350,9 +398,70 @@ function FeedCard({ post, onRefresh }) {
         {actionError && !isCommentsOpen ? (
           <p className="px-3 pb-1 text-sm text-rose-600">{actionError}</p>
         ) : null}
+        {actionSuccess && !isCommentsOpen ? (
+          <p className="px-3 pb-1 text-sm text-emerald-600">{actionSuccess}</p>
+        ) : null}
+        {isWelcomePost ? (
+          <div className="mx-3 mb-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            <p className="font-medium">Primeira missão (opcional)</p>
+            <p className="mt-0.5 text-amber-800/90">
+              Comente marcando presença — sua equipe ganha pontos.
+            </p>
+            {!alreadyCreditedArrival ? (
+              <button
+                type="button"
+                className="mt-2 text-sm font-semibold text-amber-900 underline-offset-2 hover:underline"
+                onClick={() => {
+                  setIsCommentsOpen(true);
+                  loadComments({ offset: 0, append: false });
+                }}
+              >
+                Comentar agora
+              </button>
+            ) : null}
+            {isAdminUser ? (
+              <div className="mt-3 flex flex-wrap gap-2 border-t border-amber-200/80 pt-2">
+                {welcomeStatus === 'pinned' ? (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-900 disabled:opacity-50"
+                    disabled={welcomeStatusBusy}
+                    onClick={() => updateWelcomeStatus('unpinned')}
+                  >
+                    Desafixar do topo
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-amber-300 bg-white px-2.5 py-1.5 text-xs font-medium text-amber-900 disabled:opacity-50"
+                    disabled={welcomeStatusBusy}
+                    onClick={() => updateWelcomeStatus('pinned')}
+                  >
+                    Fixar no topo
+                  </button>
+                )}
+                {welcomeStatus !== 'archived' ? (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-zinc-300 bg-white px-2.5 py-1.5 text-xs font-medium text-zinc-700 disabled:opacity-50"
+                    disabled={welcomeStatusBusy}
+                    onClick={() => {
+                      const ok = window.confirm(
+                        'Arquivar o post oficial? Ele some do feed, mas os pontos já dados continuam valendo.'
+                      );
+                      if (ok) updateWelcomeStatus('archived');
+                    }}
+                  >
+                    Arquivar
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div
-          className="relative overflow-hidden"
+          className={`relative overflow-hidden ${isWelcomePost ? 'bg-zinc-100' : ''}`}
           onDoubleClick={toggleLike}
           role="button"
           tabIndex={0}
@@ -361,7 +470,9 @@ function FeedCard({ post, onRefresh }) {
           }}
         >
           <img
-            className="aspect-square w-full object-cover"
+            className={`aspect-square w-full ${
+              isWelcomePost ? 'object-contain p-6' : 'object-cover'
+            }`}
             src={resolveMediaUrl(post.imagem_url)}
             alt={post.texto || 'Publicação'}
           />
@@ -518,6 +629,9 @@ function FeedCard({ post, onRefresh }) {
               {actionError ? (
                 <p className="text-sm text-rose-500">{actionError}</p>
               ) : null}
+              {actionSuccess ? (
+                <p className="text-sm text-emerald-600">{actionSuccess}</p>
+              ) : null}
               <div className="flex items-center gap-2">
                 <input
                   className="ig-input border-zinc-200 bg-zinc-50"
@@ -529,7 +643,9 @@ function FeedCard({ post, onRefresh }) {
                       ? 'Escreva uma resposta...'
                       : editingComment
                         ? 'Edite seu comentário...'
-                        : 'Adicione um comentário...'
+                        : isWelcomePost
+                          ? 'Escreva seu comentário de chegada...'
+                          : 'Adicione um comentário...'
                   }
                   maxLength={300}
                 />

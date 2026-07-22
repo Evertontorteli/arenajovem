@@ -24,6 +24,8 @@ function FeedPage() {
   const [posting, setPosting] = useState(false);
   const [isComposerModalOpen, setIsComposerModalOpen] = useState(false);
   const [deleteNotice, setDeleteNotice] = useState('');
+  const [welcomeMeta, setWelcomeMeta] = useState(null);
+  const [welcomeBusy, setWelcomeBusy] = useState(false);
   const sentinelRef = useRef(null);
   const fetchingRef = useRef(false);
   const fileInputRef = useRef(null);
@@ -69,6 +71,9 @@ function FeedPage() {
       setFailedCursor(null);
       setHasMorePosts(Boolean(pagination.hasMore));
       setNextCursor(pagination.nextCursor || null);
+      if (data.welcome) {
+        setWelcomeMeta(data.welcome);
+      }
     } catch (error) {
       const message =
         error?.response?.data?.message ||
@@ -140,6 +145,20 @@ function FeedPage() {
     return () => window.clearTimeout(timer);
   }, [deleteNotice]);
 
+  const restoreWelcomePost = async (status = 'pinned') => {
+    if (!isAdmin || welcomeBusy) return;
+    setWelcomeBusy(true);
+    try {
+      const { data } = await http.patch('/social/welcome-post', { status });
+      setWelcomeMeta(data);
+      await fetchPosts({ replace: true });
+    } catch (_error) {
+      setFeedError('Não foi possível restaurar o post oficial.');
+    } finally {
+      setWelcomeBusy(false);
+    }
+  };
+
   const handlePostRefresh = async (options = {}) => {
     await fetchPosts({ replace: true });
     if (options.deleted) {
@@ -197,6 +216,33 @@ function FeedPage() {
           role="status"
         >
           {deleteNotice}
+        </div>
+      ) : null}
+
+      {isAdmin && welcomeMeta?.status === 'archived' ? (
+        <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-3 text-sm text-zinc-700">
+          <p className="font-medium text-zinc-900">Post oficial arquivado</p>
+          <p className="mt-1 text-zinc-600">
+            Ele não aparece no feed. Você pode trazê-lo de volta quando quiser.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 disabled:opacity-50"
+              disabled={welcomeBusy}
+              onClick={() => restoreWelcomePost('pinned')}
+            >
+              Restaurar no topo
+            </button>
+            <button
+              type="button"
+              className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-xs font-medium text-zinc-800 disabled:opacity-50"
+              disabled={welcomeBusy}
+              onClick={() => restoreWelcomePost('unpinned')}
+            >
+              Restaurar na linha do tempo
+            </button>
+          </div>
         </div>
       ) : null}
 

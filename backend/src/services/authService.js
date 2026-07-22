@@ -5,6 +5,8 @@ const userRepository = require('../repositories/userRepository');
 const passwordResetRepository = require('../repositories/passwordResetRepository');
 const { generateToken } = require('../utils/jwt');
 const { sendPasswordResetCode } = require('../utils/sendEmail');
+const { isValidFullName, normalizeFullName } = require('../utils/fullName');
+const { LGPD_VERSION } = require('../constants/lgpd');
 
 function normalizeEmail(email) {
   return String(email || '').trim().toLowerCase();
@@ -64,8 +66,9 @@ function isPasswordBypassEnabled() {
 
 async function register(data) {
   const email = normalizeEmail(data.email);
-  if (!data.nome || String(data.nome).trim().length < 2) {
-    throw new AppError('Nome inválido.', 400);
+  const nome = normalizeFullName(data.nome);
+  if (!isValidFullName(nome)) {
+    throw new AppError('Informe nome e sobrenome.', 400);
   }
   if (!email) {
     throw new AppError('Email é obrigatório.', 400);
@@ -73,6 +76,15 @@ async function register(data) {
   if (!data.senha || String(data.senha).length < 6) {
     throw new AppError('Senha deve ter pelo menos 6 caracteres.', 400);
   }
+
+  const requiresLgpd = data.requireLgpdAccept === true;
+  if (requiresLgpd && data.aceite_lgpd !== true && data.aceite_lgpd !== 'true') {
+    throw new AppError(
+      'É necessário aceitar o Aviso de Privacidade e LGPD para criar a conta.',
+      400
+    );
+  }
+
   const normalizedPhone = data.telefone ? normalizePhone(data.telefone) : null;
 
   const existing = await authRepository.findUserByEmail(email);
@@ -82,12 +94,14 @@ async function register(data) {
 
   const senhaHash = await bcrypt.hash(data.senha, 10);
   const user = await authRepository.createUser({
-    nome: String(data.nome).trim(),
+    nome,
     email,
     senhaHash,
     role: data.role || 'PARTICIPANTE',
     equipeId: data.equipe_id || null,
     telefone: normalizedPhone,
+    lgpdAceitoEm: requiresLgpd ? new Date() : null,
+    lgpdVersao: requiresLgpd ? LGPD_VERSION : null,
   });
 
   return await buildAuthResponse(user);
@@ -99,8 +113,10 @@ async function signup(data) {
     email: data.email,
     senha: data.senha,
     telefone: data.telefone || null,
+    aceite_lgpd: data.aceite_lgpd,
     role: 'PARTICIPANTE',
     equipe_id: null,
+    requireLgpdAccept: true,
   });
 }
 

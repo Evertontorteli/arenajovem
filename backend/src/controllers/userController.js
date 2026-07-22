@@ -49,6 +49,11 @@ const updateAccess = asyncHandler(async (req, res) => {
   res.json(user);
 });
 
+const deleteMyAccount = asyncHandler(async (req, res) => {
+  const result = await userService.deleteMyAccount(req.user.id);
+  res.json(result);
+});
+
 module.exports = {
   me,
   list,
@@ -58,4 +63,5 @@ module.exports = {
   updateTeam,
   updateMyTeam,
   updateAccess,
+  deleteMyAccount,
 };

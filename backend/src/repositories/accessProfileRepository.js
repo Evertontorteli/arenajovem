@@ -45,6 +45,8 @@ async function getAllProfileAccess() {
 
 module.exports = {
   PROFILE_KEYS,
+  getConfigValue,
+  setConfigValue,
   getProfileAccess,
   setProfileAccess,
   getAllProfileAccess,

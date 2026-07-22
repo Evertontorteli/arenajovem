@@ -1,4 +1,5 @@
 const { query } = require('../config/db');
+const { ensureUserSchema } = require('../database/ensureUserSchema');
 
 async function findUserByEmail(email) {
   const rows = await query(
@@ -30,10 +31,23 @@ async function findUserByGoogleSub(googleSub) {
   return rows[0] || null;
 }
 
-async function createUser({ nome, email, senhaHash, role, equipeId, telefone, googleSub, foto }) {
+async function createUser({
+  nome,
+  email,
+  senhaHash,
+  role,
+  equipeId,
+  telefone,
+  googleSub,
+  foto,
+  lgpdAceitoEm = null,
+  lgpdVersao = null,
+}) {
+  await ensureUserSchema();
   const rows = await query(
-    `INSERT INTO usuarios (nome, email, senha_hash, role, equipe_id, telefone, google_sub, foto)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO usuarios
+      (nome, email, senha_hash, role, equipe_id, telefone, google_sub, foto, lgpd_aceito_em, lgpd_versao)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      RETURNING id`,
     [
       nome,
@@ -44,6 +58,8 @@ async function createUser({ nome, email, senhaHash, role, equipeId, telefone, go
       telefone || null,
       googleSub || null,
       foto || null,
+      lgpdAceitoEm || null,
+      lgpdVersao || null,
     ]
   );
 
@@ -56,6 +72,8 @@ async function createUser({ nome, email, senhaHash, role, equipeId, telefone, go
     foto: foto || null,
     role,
     equipe_id: equipeId || null,
+    lgpd_aceito_em: lgpdAceitoEm || null,
+    lgpd_versao: lgpdVersao || null,
   };
 }
 

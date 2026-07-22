@@ -5,16 +5,89 @@ const {
   decodeCursorToken,
 } = require('../utils/cursorToken');
 const { ensureFeedIndexes } = require('../database/ensureFeedIndexes');
+const welcomePostService = require('../services/welcomePostService');
+
+async function hydratePosts(rows, { userId = null, welcomeStatus = null } = {}) {
+  if (!rows.length) return [];
+  const welcomePostId = await welcomePostService.getWelcomePostId();
+  const status =
+    welcomeStatus || (await welcomePostService.getWelcomeStatus());
+  let alreadyCredited = false;
+  if (
+    welcomePostId &&
+    userId &&
+    rows.some((row) => Number(row.id) === Number(welcomePostId))
+  ) {
+    alreadyCredited = await welcomePostService.hasUserCreditedWelcome(userId);
+  }
+
+  return rows.map((row) => {
+    if (welcomePostId && Number(row.id) === Number(welcomePostId)) {
+      return welcomePostService.decorateWelcomePost(row, {
+        alreadyCredited,
+        status,
+      });
+    }
+    return row;
+  });
+}
+
+async function findPostRowById(postId, userId = null) {
+  const viewerId = Number(userId);
+  const hasViewer = Number.isInteger(viewerId) && viewerId > 0;
+  const likedByMeSelect = hasViewer
+    ? `(EXISTS (
+         SELECT 1 FROM curtidas cl
+         WHERE cl.publicacao_id = p.id AND cl.usuario_id = ?
+       )) AS curtida_por_mim`
+    : 'FALSE AS curtida_por_mim';
+
+  const previewCommentsSelect = `(
+    SELECT COALESCE(json_agg(row_to_json(preview)), '[]'::json)
+    FROM (
+      SELECT c.id, c.texto, c.usuario_id, u2.nome AS autor_nome, c.criado_em
+      FROM comentarios c
+      INNER JOIN usuarios u2 ON u2.id = c.usuario_id
+      WHERE c.publicacao_id = p.id AND c.parent_id IS NULL
+      ORDER BY c.criado_em DESC
+      LIMIT 3
+    ) preview
+  ) AS comentarios_preview`;
+
+  const params = hasViewer ? [viewerId, postId] : [postId];
+  const rows = await query(
+    `SELECT p.*, u.nome AS autor_nome, u.role AS autor_role, u.foto AS autor_foto, e.nome AS equipe_nome,
+      (SELECT COUNT(*)::int FROM curtidas c WHERE c.publicacao_id = p.id) AS curtidas,
+      (SELECT COUNT(*)::int FROM comentarios c2 WHERE c2.publicacao_id = p.id AND c2.parent_id IS NULL) AS comentarios,
+      ${likedByMeSelect},
+      ${previewCommentsSelect}
+     FROM publicacoes p
+     INNER JOIN usuarios u ON u.id = p.autor_id
+     LEFT JOIN equipes e ON e.id = p.equipe_id
+     WHERE p.id = ?`,
+    params
+  );
+  return rows[0] || null;
+}
 
 async function listPosts({ limit = 6, cursor = null, userId = null } = {}) {
   await ensureFeedIndexes();
+  const welcomePostId = await welcomePostService.ensureWelcomePost();
+  const welcomeStatus = await welcomePostService.getWelcomeStatus();
+  const isPinned = welcomeStatus === welcomePostService.WELCOME_STATUS.PINNED;
+  const isArchived =
+    welcomeStatus === welcomePostService.WELCOME_STATUS.ARCHIVED;
 
   const safeLimit = Math.min(12, Math.max(1, Number(limit) || 6));
-  const safeLimitPlusOne = safeLimit + 1;
   const decodedCursor = decodeCursorToken(cursor);
   if (cursor && !decodedCursor) {
     throw new AppError('Cursor inválido ou expirado.', 400);
   }
+
+  const isFirstPage = !decodedCursor;
+  const reserveWelcomeSlot = isFirstPage && isPinned && !isArchived;
+  const pageLimit = reserveWelcomeSlot ? Math.max(1, safeLimit - 1) : safeLimit;
+  const pageLimitPlusOne = pageLimit + 1;
 
   const viewerId = Number(userId);
   const hasViewer = Number.isInteger(viewerId) && viewerId > 0;
@@ -46,54 +119,73 @@ async function listPosts({ limit = 6, cursor = null, userId = null } = {}) {
      INNER JOIN usuarios u ON u.id = p.autor_id
      LEFT JOIN equipes e ON e.id = p.equipe_id`;
 
+  // Arquivado: some do feed. Fixado: fora da query normal e no topo.
+  // Desafixado: entra na ordem cronológica normal.
+  const excludeWelcome = isPinned || isArchived;
+
   let rows;
   if (decodedCursor) {
-    const params = hasViewer
-      ? [
-          viewerId,
-          decodedCursor.criadoEm,
-          decodedCursor.criadoEm,
-          decodedCursor.id,
-        ]
-      : [
-          decodedCursor.criadoEm,
-          decodedCursor.criadoEm,
-          decodedCursor.id,
-        ];
+    const params = [];
+    if (hasViewer) params.push(viewerId);
+    if (excludeWelcome) params.push(welcomePostId);
+    params.push(
+      decodedCursor.criadoEm,
+      decodedCursor.criadoEm,
+      decodedCursor.id
+    );
 
     rows = await query(
       `${selectSql}
-       WHERE (
+       WHERE ${excludeWelcome ? 'p.id <> ? AND ' : ''}(
          p.criado_em < ?
          OR (p.criado_em = ? AND p.id < ?)
        )
        ORDER BY p.criado_em DESC, p.id DESC
-       LIMIT ${safeLimitPlusOne}`,
+       LIMIT ${pageLimitPlusOne}`,
       params
     );
   } else {
-    const params = hasViewer ? [viewerId] : [];
+    const params = [];
+    if (hasViewer) params.push(viewerId);
+    if (excludeWelcome) params.push(welcomePostId);
+
     rows = await query(
       `${selectSql}
+       ${excludeWelcome ? 'WHERE p.id <> ?' : ''}
        ORDER BY p.criado_em DESC, p.id DESC
-       LIMIT ${safeLimitPlusOne}`,
+       LIMIT ${pageLimitPlusOne}`,
       params
     );
   }
 
-  const hasMore = rows.length > safeLimit;
-  const items = hasMore ? rows.slice(0, safeLimit) : rows;
+  const hasMore = rows.length > pageLimit;
+  const items = hasMore ? rows.slice(0, pageLimit) : rows;
   const nextCursor = hasMore
     ? encodeCursorToken(items[items.length - 1])
     : null;
 
+  let finalItems = items;
+  if (reserveWelcomeSlot) {
+    const welcomeRow = await findPostRowById(welcomePostId, userId);
+    if (welcomeRow) {
+      finalItems = [welcomeRow, ...items];
+    }
+  }
+
   return {
-    items,
+    items: await hydratePosts(finalItems, {
+      userId,
+      welcomeStatus,
+    }),
     pagination: {
       limit: safeLimit,
       hasMore,
       nextCursor,
       mode: 'cursor',
+    },
+    welcome: {
+      id: welcomePostId,
+      status: welcomeStatus,
     },
   };
 }

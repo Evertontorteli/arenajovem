@@ -16,12 +16,14 @@ import TeamSelectionPage from './pages/TeamSelectionPage';
 import AvatarSetupPage from './pages/AvatarSetupPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import PrivacyPage from './pages/PrivacyPage';
 
 function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/cadastro" element={<RegisterPage />} />
+      <Route path="/privacidade" element={<PrivacyPage />} />
       <Route path="/esqueci-senha" element={<ForgotPasswordPage />} />
       <Route
         path="/escolher-avatar"
