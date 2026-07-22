@@ -93,20 +93,32 @@ function ProfilePage() {
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="grid gap-4">
-          <div className="ig-card flex items-center gap-3 p-4">
-            <UserAvatar
-              foto={foto}
-              nome={user?.nome}
-              equipeNome={user?.equipe_nome}
-              sizeClass="h-14 w-14"
-            />
-            <div>
-              <h3 className="text-base font-semibold text-zinc-900">{user?.nome}</h3>
-              <small className="text-xs text-zinc-500">
-                @{(user?.nome || '').replace(/\s+/g, '').toLowerCase()}
-              </small>
+          <form className="ig-card grid gap-3 p-4" onSubmit={saveProfile}>
+            <div className="flex items-center gap-3">
+              <UserAvatar
+                foto={foto}
+                nome={nome || user?.nome}
+                equipeNome={user?.equipe_nome}
+                sizeClass="h-14 w-14"
+              />
+              <div className="min-w-0 flex-1">
+                <input
+                  className="ig-input"
+                  value={nome}
+                  onChange={(e) => setNome(e.target.value)}
+                  placeholder="Nome"
+                  aria-label="Nome"
+                />
+                <p className="mt-1 truncate text-xs text-zinc-500">
+                  @{(nome || user?.nome || '').replace(/\s+/g, '').toLowerCase()}
+                  {user?.equipe_nome ? ` · ${user.equipe_nome}` : ''}
+                </p>
+              </div>
             </div>
-          </div>
+            <button type="submit" className="ig-button" disabled={savingProfile}>
+              {savingProfile ? 'Salvando...' : 'Salvar perfil'}
+            </button>
+          </form>
 
           <AvatarPicker
             user={user}
@@ -114,18 +126,6 @@ function ProfilePage() {
             onFotoChange={setFoto}
             onSaved={handleAvatarSaved}
           />
-
-          <form className="ig-card grid gap-2 p-4" onSubmit={saveProfile}>
-            <input
-              className="ig-input"
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder="Nome"
-            />
-            <button type="submit" className="ig-button" disabled={savingProfile}>
-              {savingProfile ? 'Salvando...' : 'Salvar perfil'}
-            </button>
-          </form>
 
           <form className="ig-card grid gap-2 p-4" onSubmit={changePassword}>
             <h3 className="mb-1 text-base font-semibold text-zinc-900">Alterar senha</h3>

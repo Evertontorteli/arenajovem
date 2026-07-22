@@ -9,6 +9,16 @@ export const AVATAR_PRESETS = [
   { id: 'panda', label: 'Panda' },
   { id: 'lion', label: 'Leão' },
   { id: 'owl', label: 'Coruja' },
+  { id: 'tiger', label: 'Tigre' },
+  { id: 'wolf', label: 'Lobo' },
+  { id: 'monkey', label: 'Macaco' },
+  { id: 'penguin', label: 'Pinguim' },
+  { id: 'koala', label: 'Coala' },
+  { id: 'frog', label: 'Sapo' },
+  { id: 'chick', label: 'Pintinho' },
+  { id: 'pig', label: 'Porquinho' },
+  { id: 'unicorn', label: 'Unicórnio' },
+  { id: 'dolphin', label: 'Golfinho' },
 ];
 
 export function isPresetAvatar(foto) {

@@ -1,5 +1,6 @@
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { userHasProfilePhoto } from '../utils/accessPermissions';
 
 function TeamRequiredRoute({ children }) {
   const { user, loading } = useAuth();
@@ -14,6 +15,10 @@ function TeamRequiredRoute({ children }) {
 
   if (!user) {
     return <Navigate to="/login" replace />;
+  }
+
+  if (user.role !== 'ADMIN' && !userHasProfilePhoto(user)) {
+    return <Navigate to="/escolher-avatar" replace />;
   }
 
   if (user.role !== 'ADMIN' && !user.equipe_id) {

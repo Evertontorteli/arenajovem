@@ -67,6 +67,9 @@ export function getDefaultRouteForAccess(acessos = []) {
 
 export function getPostLoginRoute(user) {
   if (!user) return '/login';
+  if (user.role !== 'ADMIN' && !userHasProfilePhoto(user)) {
+    return '/escolher-avatar';
+  }
   if (!user.equipe_id && user.role !== 'ADMIN') {
     return '/escolher-time';
   }
@@ -77,6 +80,12 @@ export function getPostLoginRoute(user) {
     return '/feed';
   }
   return getDefaultRouteForAccess(user.acessos || PARTICIPANTE_DEFAULT_ACCESS);
+}
+
+export function userHasProfilePhoto(user) {
+  if (!user) return false;
+  const foto = user.foto;
+  return typeof foto === 'string' && foto.trim().length > 0;
 }
 
 export const ADMIN_ONLY_MODULES = ['dashboard', 'equipes', 'admin_pontuacao', 'admin_acessos'];

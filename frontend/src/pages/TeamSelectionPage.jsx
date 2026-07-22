@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import http from '../api/http';
 import { useAuth } from '../contexts/AuthContext';
+import { getPostLoginRoute, userHasProfilePhoto } from '../utils/accessPermissions';
 
 function TeamSelectionPage() {
   const { user, refreshUser, getDefaultRoute } = useAuth();
@@ -16,6 +17,10 @@ function TeamSelectionPage() {
     if (!user) return;
     if (user.role === 'ADMIN' || user.equipe_id) {
       navigate(getDefaultRoute(), { replace: true });
+      return;
+    }
+    if (!userHasProfilePhoto(user)) {
+      navigate('/escolher-avatar', { replace: true });
       return;
     }
 
@@ -37,7 +42,7 @@ function TeamSelectionPage() {
     }
 
     loadTeams();
-  }, [navigate, user]);
+  }, [navigate, user, getDefaultRoute]);
 
   const handleSaveTeam = async (event) => {
     event.preventDefault();
@@ -64,9 +69,15 @@ function TeamSelectionPage() {
       <div className="w-full max-w-[560px]">
         <form className="ig-card grid gap-4 px-6 py-7" onSubmit={handleSaveTeam}>
           <div>
-            <h1 className="text-center text-2xl font-semibold text-zinc-900">Escolha seu time</h1>
+            <p className="text-center text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Passo 2 de 2
+            </p>
+            <h1 className="mt-1 text-center text-2xl font-semibold text-zinc-900">
+              Escolha seu time
+            </h1>
             <p className="mt-1 text-center text-sm text-zinc-500">
-              Para entrar na gincana, selecione seu time: verde, amarelo, azul ou vermelho.
+              Para entrar na gincana, selecione seu time: verde, amarelo, azul ou
+              vermelho.
             </p>
           </div>
 

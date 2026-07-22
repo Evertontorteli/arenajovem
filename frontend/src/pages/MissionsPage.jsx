@@ -4,6 +4,7 @@ import http from '../api/http';
 import UserAvatar from '../components/UserAvatar';
 import { useAuth } from '../contexts/AuthContext';
 import { resolveMediaUrl } from '../utils/avatarPresets';
+import { getTeamThemeByLabel } from '../utils/teamColors';
 
 const emptyQuestion = () => ({
   enunciado: '',
@@ -108,6 +109,72 @@ function QuestionMedia({ midiaUrl, midiaTipo }) {
   );
 }
 
+function EngajadoProfileModal({ person, onClose }) {
+  const teamTheme = getTeamThemeByLabel(person.equipe_nome);
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/55 p-0 sm:items-center sm:p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="engajado-perfil-title"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm overflow-hidden rounded-t-2xl bg-white shadow-xl sm:rounded-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="flex items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3">
+          <h3
+            id="engajado-perfil-title"
+            className="text-base font-semibold text-zinc-900"
+          >
+            Perfil
+          </h3>
+          <button
+            type="button"
+            className="grid h-8 w-8 place-items-center rounded-full border border-zinc-300 text-zinc-600 transition hover:bg-zinc-100"
+            onClick={onClose}
+            aria-label="Fechar"
+          >
+            <FaTimes />
+          </button>
+        </header>
+
+        <div className="grid gap-4 p-5 text-center">
+          <div className="mx-auto">
+            <UserAvatar
+              foto={person.usuario_foto}
+              nome={person.usuario_nome}
+              equipeNome={person.equipe_nome}
+              sizeClass="h-24 w-24"
+              ringClass={`ring-4 ${teamTheme.ring}`}
+            />
+          </div>
+          <div>
+            <p className="text-lg font-semibold text-zinc-900">
+              {person.usuario_nome}
+            </p>
+            <p className="mt-1 text-sm text-zinc-500">
+              #{person.posicao} nos mais engajados
+            </p>
+          </div>
+          <div
+            className={`rounded-xl border px-4 py-3 ${teamTheme.border} ${teamTheme.softBg}`}
+          >
+            <p className="text-xs font-medium uppercase tracking-wide text-zinc-500">
+              Equipe
+            </p>
+            <p className={`mt-1 text-base font-semibold ${teamTheme.softText}`}>
+              {person.equipe_nome || 'Sem equipe'}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function MissionsPage() {
   const { isAdmin } = useAuth();
   const [missions, setMissions] = useState([]);
@@ -115,6 +182,7 @@ function MissionsPage() {
   const [perguntas, setPerguntas] = useState([emptyQuestion()]);
   const [capaFile, setCapaFile] = useState(null);
   const [capaFileName, setCapaFileName] = useState('');
+  const [capaPreviewUrl, setCapaPreviewUrl] = useState('');
   const [editingMissionId, setEditingMissionId] = useState(null);
   const [submissionFiles, setSubmissionFiles] = useState({});
   const [activeQuizId, setActiveQuizId] = useState(null);
@@ -128,6 +196,7 @@ function MissionsPage() {
   /** 0 = intro, 1..N = pergunta, 'confirm' = revisão final */
   const [quizStep, setQuizStep] = useState(0);
   const [userRanking, setUserRanking] = useState([]);
+  const [selectedEngajado, setSelectedEngajado] = useState(null);
 
   const loadMissions = async () => {
     const { data } = await http.get('/competition/missions');
@@ -179,6 +248,16 @@ function MissionsPage() {
   }, []);
 
   useEffect(() => {
+    if (!capaFile || !capaFile.type?.startsWith('image/')) {
+      setCapaPreviewUrl('');
+      return undefined;
+    }
+    const url = URL.createObjectURL(capaFile);
+    setCapaPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [capaFile]);
+
+  useEffect(() => {
     if (!activeQuizId) return undefined;
     const previous = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
@@ -214,6 +293,7 @@ function MissionsPage() {
     setForm(emptyFormState());
     setCapaFile(null);
     setCapaFileName('');
+    setCapaPreviewUrl('');
     setPerguntas([emptyQuestion()]);
   };
 
@@ -381,7 +461,16 @@ function MissionsPage() {
         setQuizStep(0);
       }
     } catch (error) {
-      setQuizError(error?.response?.data?.message || 'Não foi possível abrir o quiz.');
+      const apiMessage = error?.response?.data?.message;
+      const status = error?.response?.status;
+      setQuizError(
+        apiMessage ||
+          (status === 404
+            ? 'Rota do quiz não encontrada. Reinicie o backend e tente de novo.'
+            : error?.message === 'Network Error'
+              ? 'Sem conexão com a API. Confira se o backend está rodando na porta 3333.'
+              : 'Não foi possível abrir o quiz.')
+      );
       setQuizData(null);
     } finally {
       setQuizLoading(false);
@@ -512,12 +601,15 @@ function MissionsPage() {
             <p className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">
               10 mais engajados
             </p>
-            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+            <div className="flex items-center gap-2 overflow-x-auto overflow-y-hidden pb-2">
               {userRanking.map((row) => (
-                <div
+                <button
                   key={row.usuario_id}
-                  title={`#${row.posicao} ${row.usuario_nome}`}
-                  className="relative h-11 w-11 shrink-0"
+                  type="button"
+                  title={`Ver perfil de ${row.usuario_nome}`}
+                  aria-label={`Ver perfil de ${row.usuario_nome}`}
+                  className="relative h-11 w-11 shrink-0 rounded-full transition hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-400"
+                  onClick={() => setSelectedEngajado(row)}
                 >
                   <UserAvatar
                     foto={row.usuario_foto}
@@ -529,7 +621,7 @@ function MissionsPage() {
                   <span className="absolute -bottom-0.5 -right-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-zinc-900 px-0.5 text-[9px] font-semibold text-white">
                     {row.posicao}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           </div>
@@ -543,309 +635,480 @@ function MissionsPage() {
         </p>
       </header>
 
+      {selectedEngajado ? (
+        <EngajadoProfileModal
+          person={selectedEngajado}
+          onClose={() => setSelectedEngajado(null)}
+        />
+      ) : null}
+
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="grid gap-4">
           {isAdmin ? (
-            <form
-              className="ig-card grid gap-2 p-4 sm:grid-cols-2 xl:grid-cols-3"
-              onSubmit={createMission}
-            >
+            <form className="grid gap-4" onSubmit={createMission}>
               {editingMissionId ? (
-                <div className="flex flex-wrap items-center justify-between gap-2 sm:col-span-2 xl:col-span-3">
-                  <p className="text-sm font-semibold text-zinc-800">
-                    Editando missão #{editingMissionId}
-                  </p>
+                <div className="ig-card flex flex-wrap items-center justify-between gap-2 px-4 py-3">
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-900">
+                      Editando missão
+                    </p>
+                    <p className="text-xs text-zinc-500">#{editingMissionId}</p>
+                  </div>
                   <button
                     type="button"
-                    className="bg-transparent p-0 text-sm text-zinc-500 hover:underline"
+                    className="rounded-lg border border-zinc-300 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
                     onClick={resetMissionForm}
                   >
                     Cancelar edição
                   </button>
                 </div>
               ) : null}
-              <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                Tipo da missão
-                <select
-                  className="ig-input"
-                  value={form.tipo}
-                  disabled={Boolean(editingMissionId)}
-                  onChange={(e) => {
-                    setForm((s) => ({ ...s, tipo: e.target.value }));
-                    setCapaFile(null);
-                    setCapaFileName('');
-                  }}
-                >
-                  <option value="FOTO">Foto</option>
-                  <option value="AUDIO">Áudio</option>
-                  <option value="VIDEO">Vídeo</option>
-                  <option value="QUIZ">Quiz</option>
-                </select>
-              </label>
-              {form.tipo === 'QUIZ' ? (
-                <>
-                  <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                    Modo de pontuação
-                    <select
-                      className="ig-input"
-                      value={form.quiz_modo_pontuacao}
-                      onChange={(e) =>
-                        setForm((s) => ({ ...s, quiz_modo_pontuacao: e.target.value }))
-                      }
-                    >
-                      <option value="PROPORCIONAL">Proporcional aos acertos</option>
-                      <option value="TUDO_OU_NADA">Só se acertar tudo</option>
-                    </select>
-                  </label>
-                  <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                    Nível de dificuldade
-                    <select
-                      className="ig-input"
-                      value={form.quiz_dificuldade}
-                      onChange={(e) =>
-                        setForm((s) => ({ ...s, quiz_dificuldade: e.target.value }))
-                      }
-                    >
-                      <option value="FACIL">Fácil</option>
-                      <option value="MEDIO">Médio</option>
-                      <option value="DIFICIL">Difícil</option>
-                      <option value="MUITO_DIFICIL">Muito Difícil</option>
-                    </select>
-                  </label>
-                </>
-              ) : (
-                <div className="hidden sm:block sm:col-span-1" />
-              )}
-              <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                Título
-                <input
-                  className="ig-input"
-                  placeholder="Nome da missão"
-                  value={form.titulo}
-                  onChange={(e) => setForm((s) => ({ ...s, titulo: e.target.value }))}
-                  required
-                />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-zinc-700 sm:col-span-2 xl:col-span-3">
-                Descrição
-                <textarea
-                  className="ig-input"
-                  placeholder="Explique o desafio para os participantes"
-                  value={form.descricao}
-                  onChange={(e) => setForm((s) => ({ ...s, descricao: e.target.value }))}
-                  required
-                />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                Pontuação
-                <input
-                  className="ig-input"
-                  type="number"
-                  min="1"
-                  placeholder="Ex.: 10"
-                  value={form.pontuacao}
-                  onChange={(e) => setForm((s) => ({ ...s, pontuacao: e.target.value }))}
-                  required
-                />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                Data e hora de início
-                <input
-                  className="ig-input"
-                  type="datetime-local"
-                  value={form.data_inicio}
-                  onChange={(e) => setForm((s) => ({ ...s, data_inicio: e.target.value }))}
-                  required
-                />
-              </label>
-              <label className="grid gap-1 text-sm font-medium text-zinc-700">
-                Data e hora de fim
-                <input
-                  className="ig-input"
-                  type="datetime-local"
-                  value={form.data_fim}
-                  onChange={(e) => setForm((s) => ({ ...s, data_fim: e.target.value }))}
-                  required
-                />
-              </label>
 
+              {/* 1. Tipo */}
+              <section className="ig-card grid gap-3 p-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-900">Tipo da missão</h3>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    Escolha o formato do desafio. No quiz, a capa é opcional e as
+                    perguntas ficam em um bloco separado.
+                  </p>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-4">
+                  {[
+                    { value: 'FOTO', label: 'Foto', hint: 'Envio de imagem' },
+                    { value: 'AUDIO', label: 'Áudio', hint: 'Envio de áudio' },
+                    { value: 'VIDEO', label: 'Vídeo', hint: 'Envio de vídeo' },
+                    { value: 'QUIZ', label: 'Quiz', hint: 'Perguntas e respostas' },
+                  ].map((option) => {
+                    const selected = form.tipo === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={Boolean(editingMissionId)}
+                        onClick={() => {
+                          setForm((s) => ({ ...s, tipo: option.value }));
+                          setCapaFile(null);
+                          setCapaFileName('');
+                        }}
+                        className={`rounded-xl border px-3 py-3 text-left transition ${
+                          selected
+                            ? 'border-zinc-800 bg-zinc-900 text-white'
+                            : 'border-zinc-200 bg-zinc-50 text-zinc-800 hover:border-zinc-400'
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                      >
+                        <span className="block text-sm font-semibold">{option.label}</span>
+                        <span
+                          className={`mt-0.5 block text-[11px] ${
+                            selected ? 'text-zinc-300' : 'text-zinc-500'
+                          }`}
+                        >
+                          {option.hint}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* 2. Identidade */}
+              <section className="ig-card grid gap-3 p-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-900">Identidade</h3>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    Título e descrição que os participantes verão no card.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm font-medium text-zinc-700 sm:col-span-2">
+                    Título
+                    <input
+                      className="ig-input"
+                      placeholder="Nome da missão"
+                      value={form.titulo}
+                      onChange={(e) => setForm((s) => ({ ...s, titulo: e.target.value }))}
+                      required
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-zinc-700 sm:col-span-2">
+                    Descrição
+                    <textarea
+                      className="ig-input min-h-[88px]"
+                      placeholder="Explique o desafio para os participantes"
+                      value={form.descricao}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, descricao: e.target.value }))
+                      }
+                      required
+                    />
+                  </label>
+                </div>
+              </section>
+
+              {/* 3. Pontos e prazo */}
+              <section className="ig-card grid gap-3 p-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-900">Pontos e prazo</h3>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    Defina a recompensa e a janela em que a missão fica aberta.
+                  </p>
+                </div>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                    Pontuação
+                    <input
+                      className="ig-input"
+                      type="number"
+                      min="1"
+                      placeholder="Ex.: 10"
+                      value={form.pontuacao}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, pontuacao: e.target.value }))
+                      }
+                      required
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                    Início
+                    <input
+                      className="ig-input"
+                      type="datetime-local"
+                      value={form.data_inicio}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, data_inicio: e.target.value }))
+                      }
+                      required
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                    Fim
+                    <input
+                      className="ig-input"
+                      type="datetime-local"
+                      value={form.data_fim}
+                      onChange={(e) =>
+                        setForm((s) => ({ ...s, data_fim: e.target.value }))
+                      }
+                      required
+                    />
+                  </label>
+                </div>
+              </section>
+
+              {/* 4. Config do quiz */}
               {form.tipo === 'QUIZ' ? (
-                <label className="grid gap-1 text-sm font-medium text-zinc-700 sm:col-span-2 xl:col-span-3">
-                  Tempo limite do quiz (segundos, opcional)
-                  <input
-                    className="ig-input"
-                    type="number"
-                    min="10"
-                    placeholder="Ex.: 120 — vazio = sem limite"
-                    value={form.quiz_tempo_segundos}
-                    onChange={(e) =>
-                      setForm((s) => ({ ...s, quiz_tempo_segundos: e.target.value }))
-                    }
-                  />
-                </label>
+                <section className="ig-card grid gap-3 p-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-zinc-900">
+                      Configuração do quiz
+                    </h3>
+                    <p className="mt-0.5 text-xs text-zinc-500">
+                      Regras de pontuação, dificuldade e tempo limite.
+                    </p>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                      Modo de pontuação
+                      <select
+                        className="ig-input"
+                        value={form.quiz_modo_pontuacao}
+                        onChange={(e) =>
+                          setForm((s) => ({
+                            ...s,
+                            quiz_modo_pontuacao: e.target.value,
+                          }))
+                        }
+                      >
+                        <option value="PROPORCIONAL">Proporcional aos acertos</option>
+                        <option value="TUDO_OU_NADA">Só se acertar tudo</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                      Nível de dificuldade
+                      <select
+                        className="ig-input"
+                        value={form.quiz_dificuldade}
+                        onChange={(e) =>
+                          setForm((s) => ({ ...s, quiz_dificuldade: e.target.value }))
+                        }
+                      >
+                        <option value="FACIL">Fácil</option>
+                        <option value="MEDIO">Médio</option>
+                        <option value="DIFICIL">Difícil</option>
+                        <option value="MUITO_DIFICIL">Muito Difícil</option>
+                      </select>
+                    </label>
+                    <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                      Tempo limite (segundos)
+                      <input
+                        className="ig-input"
+                        type="number"
+                        min="10"
+                        placeholder="Vazio = sem limite"
+                        value={form.quiz_tempo_segundos}
+                        onChange={(e) =>
+                          setForm((s) => ({
+                            ...s,
+                            quiz_tempo_segundos: e.target.value,
+                          }))
+                        }
+                      />
+                    </label>
+                  </div>
+                </section>
               ) : null}
 
-              <label className="grid gap-1 text-sm font-medium text-zinc-700 sm:col-span-2 xl:col-span-3">
-                {form.tipo === 'AUDIO'
-                  ? 'Áudio da missão'
-                  : form.tipo === 'VIDEO'
-                    ? 'Vídeo da missão'
-                    : form.tipo === 'QUIZ'
-                      ? 'Imagem de capa (opcional)'
-                      : 'Foto da missão'}
-                <input
-                  key={form.tipo}
-                  className="ig-input"
-                  type="file"
-                  accept={
-                    form.tipo === 'AUDIO'
-                      ? 'audio/*'
-                      : form.tipo === 'VIDEO'
-                        ? 'video/*'
-                        : 'image/*'
-                  }
-                  onChange={(e) => {
-                    const file = e.target.files?.[0] || null;
-                    setCapaFile(file);
-                    setCapaFileName(file ? file.name : '');
-                  }}
-                  required={form.tipo === 'FOTO' || form.tipo === 'AUDIO' || form.tipo === 'VIDEO'}
-                />
-                {capaFileName ? (
-                  <span className="text-xs font-normal text-zinc-500">{capaFileName}</span>
-                ) : null}
-              </label>
-
-              {form.tipo === 'QUIZ' ? (
-                <div className="grid gap-3 sm:col-span-2 xl:col-span-3">
-                  <p className="text-sm font-medium text-zinc-700">
-                    Perguntas do quiz (mídia opcional por pergunta)
+              {/* 5. Mídia / capa */}
+              <section className="ig-card grid gap-3 p-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-zinc-900">
+                    {form.tipo === 'QUIZ'
+                      ? 'Capa do quiz'
+                      : form.tipo === 'AUDIO'
+                        ? 'Arquivo de áudio'
+                        : form.tipo === 'VIDEO'
+                          ? 'Arquivo de vídeo'
+                          : 'Arquivo de foto'}
+                  </h3>
+                  <p className="mt-0.5 text-xs text-zinc-500">
+                    {form.tipo === 'QUIZ'
+                      ? 'Opcional. Aparece no card da missão e no feed ao encerrar.'
+                      : 'Obrigatório. Este é o arquivo que a equipe precisa enviar / a referência da missão.'}
                   </p>
-                  {perguntas.map((pergunta, qIndex) => (
-                    <div
-                      key={`q-${qIndex}`}
-                      className="grid gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3"
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <strong className="text-sm text-zinc-800">
-                          Pergunta {qIndex + 1}
-                        </strong>
-                        {perguntas.length > 1 ? (
-                          <button
-                            type="button"
-                            className="bg-transparent p-0 text-xs text-rose-600 hover:underline"
-                            onClick={() =>
-                              setPerguntas((list) => list.filter((_, i) => i !== qIndex))
-                            }
-                          >
-                            Remover
-                          </button>
-                        ) : null}
-                      </div>
-                      <label className="grid gap-1 text-xs font-medium text-zinc-600">
-                        Enunciado
-                        <input
-                          className="ig-input"
-                          placeholder="Ex.: Quem está cantando essa música?"
-                          value={pergunta.enunciado}
-                          onChange={(e) =>
-                            updatePergunta(qIndex, { enunciado: e.target.value })
-                          }
-                          required
-                        />
-                      </label>
-                      <label className="grid gap-1 text-xs font-medium text-zinc-600">
-                        Mídia opcional (áudio, vídeo ou imagem)
-                        <input
-                          className="ig-input"
-                          type="file"
-                          accept="audio/*,video/*,image/*"
-                          onChange={(e) => {
-                            const file = e.target.files?.[0] || null;
-                            updatePergunta(qIndex, {
-                              midiaFile: file,
-                              midiaPreview: file ? file.name : '',
-                            });
-                          }}
-                        />
-                      </label>
-                      <p className="text-xs font-medium text-zinc-600">
-                        Alternativas (marque a correta)
+                </div>
+                <label className="grid gap-2">
+                  <span className="inline-flex w-fit items-center rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-0.5 text-[11px] font-medium text-zinc-600">
+                    {form.tipo === 'QUIZ' ? 'Opcional' : 'Obrigatório'}
+                  </span>
+                  <input
+                    key={form.tipo}
+                    className="ig-input"
+                    type="file"
+                    accept={
+                      form.tipo === 'AUDIO'
+                        ? 'audio/*'
+                        : form.tipo === 'VIDEO'
+                          ? 'video/*'
+                          : 'image/*'
+                    }
+                    onChange={(e) => {
+                      const file = e.target.files?.[0] || null;
+                      setCapaFile(file);
+                      setCapaFileName(file ? file.name : '');
+                    }}
+                    required={
+                      form.tipo === 'FOTO' ||
+                      form.tipo === 'AUDIO' ||
+                      form.tipo === 'VIDEO'
+                    }
+                  />
+                  {capaFileName ? (
+                    <span className="text-xs text-zinc-500">
+                      Selecionado: {capaFileName}
+                    </span>
+                  ) : null}
+                  {capaPreviewUrl ? (
+                    <img
+                      src={capaPreviewUrl}
+                      alt="Prévia da capa"
+                      className="mt-1 max-h-40 w-full rounded-lg bg-zinc-100 object-contain"
+                    />
+                  ) : null}
+                </label>
+              </section>
+
+              {/* 6. Perguntas do quiz */}
+              {form.tipo === 'QUIZ' ? (
+                <section className="ig-card grid gap-4 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-semibold text-zinc-900">
+                        Perguntas do quiz
+                      </h3>
+                      <p className="mt-0.5 text-xs text-zinc-500">
+                        Cada pergunta pode ter mídia opcional (foto, áudio ou vídeo) e
+                        alternativas com uma resposta correta.
                       </p>
-                      {pergunta.alternativas.map((alt, aIndex) => (
-                        <label
-                          key={`a-${qIndex}-${aIndex}`}
-                          className="flex items-center gap-2"
-                        >
+                    </div>
+                    <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-0.5 text-[11px] font-medium text-zinc-600">
+                      {perguntas.length} pergunta{perguntas.length === 1 ? '' : 's'}
+                    </span>
+                  </div>
+
+                  <div className="grid gap-4">
+                    {perguntas.map((pergunta, qIndex) => (
+                      <div
+                        key={`q-${qIndex}`}
+                        className="grid gap-3 rounded-xl border border-zinc-200 bg-zinc-50/80 p-4"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-zinc-800">
+                            Pergunta {qIndex + 1}
+                          </p>
+                          {perguntas.length > 1 ? (
+                            <button
+                              type="button"
+                              className="rounded-lg px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                              onClick={() =>
+                                setPerguntas((list) =>
+                                  list.filter((_, i) => i !== qIndex)
+                                )
+                              }
+                            >
+                              Remover
+                            </button>
+                          ) : null}
+                        </div>
+
+                        <label className="grid gap-1 text-sm font-medium text-zinc-700">
+                          Enunciado
                           <input
-                            type="radio"
-                            name={`correta-${qIndex}`}
-                            checked={Boolean(alt.correta)}
-                            onChange={() =>
-                              updateAlternativa(qIndex, aIndex, { correta: true })
-                            }
-                          />
-                          <input
-                            className="ig-input flex-1"
-                            placeholder={`Texto da alternativa ${aIndex + 1}`}
-                            value={alt.texto}
+                            className="ig-input"
+                            placeholder="Ex.: Quem está na foto?"
+                            value={pergunta.enunciado}
                             onChange={(e) =>
-                              updateAlternativa(qIndex, aIndex, {
-                                texto: e.target.value,
-                              })
+                              updatePergunta(qIndex, { enunciado: e.target.value })
                             }
                             required
                           />
                         </label>
-                      ))}
-                      <button
-                        type="button"
-                        className="justify-self-start bg-transparent p-0 text-xs text-blue-700 hover:underline"
-                        onClick={() =>
-                          updatePergunta(qIndex, {
-                            alternativas: [
-                              ...pergunta.alternativas,
-                              { texto: '', correta: false },
-                            ],
-                          })
-                        }
-                      >
-                        + Alternativa
-                      </button>
-                    </div>
-                  ))}
+
+                        <div className="grid gap-2 rounded-lg border border-dashed border-zinc-300 bg-white p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                              Mídia da pergunta
+                            </p>
+                            <span className="text-[11px] text-zinc-400">Opcional</span>
+                          </div>
+                          <input
+                            className="ig-input"
+                            type="file"
+                            accept="audio/*,video/*,image/*"
+                            onChange={(e) => {
+                              const file = e.target.files?.[0] || null;
+                              updatePergunta(qIndex, {
+                                midiaFile: file,
+                                midiaPreview: file ? file.name : pergunta.midiaPreview,
+                              });
+                            }}
+                          />
+                          {pergunta.midiaFile ? (
+                            <p className="text-xs text-zinc-500">
+                              Novo arquivo: {pergunta.midiaFile.name}
+                            </p>
+                          ) : pergunta.midia_url ? (
+                            <QuestionMedia
+                              midiaUrl={pergunta.midia_url}
+                              midiaTipo={pergunta.midia_tipo}
+                            />
+                          ) : null}
+                        </div>
+
+                        <div className="grid gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                            Alternativas
+                          </p>
+                          {pergunta.alternativas.map((alt, aIndex) => (
+                            <label
+                              key={`a-${qIndex}-${aIndex}`}
+                              className={`flex items-center gap-2 rounded-lg border px-3 py-2 ${
+                                alt.correta
+                                  ? 'border-emerald-300 bg-emerald-50'
+                                  : 'border-zinc-200 bg-white'
+                              }`}
+                            >
+                              <input
+                                type="radio"
+                                name={`correta-${qIndex}`}
+                                checked={Boolean(alt.correta)}
+                                onChange={() =>
+                                  updateAlternativa(qIndex, aIndex, { correta: true })
+                                }
+                                className="shrink-0"
+                              />
+                              <input
+                                className="ig-input flex-1 border-0 bg-transparent px-0 py-1 shadow-none focus:ring-0"
+                                placeholder={`Alternativa ${aIndex + 1}`}
+                                value={alt.texto}
+                                onChange={(e) =>
+                                  updateAlternativa(qIndex, aIndex, {
+                                    texto: e.target.value,
+                                  })
+                                }
+                                required
+                              />
+                              {alt.correta ? (
+                                <span className="shrink-0 text-[11px] font-medium text-emerald-700">
+                                  Correta
+                                </span>
+                              ) : null}
+                            </label>
+                          ))}
+                          <button
+                            type="button"
+                            className="justify-self-start text-xs font-medium text-blue-700 hover:underline"
+                            onClick={() =>
+                              updatePergunta(qIndex, {
+                                alternativas: [
+                                  ...pergunta.alternativas,
+                                  { texto: '', correta: false },
+                                ],
+                              })
+                            }
+                          >
+                            + Alternativa
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
                   <button
                     type="button"
-                    className="justify-self-start bg-transparent p-0 text-sm text-blue-700 hover:underline"
+                    className="rounded-lg border border-dashed border-zinc-300 bg-zinc-50 px-4 py-3 text-sm font-medium text-zinc-700 transition hover:border-zinc-400 hover:bg-white"
                     onClick={() => setPerguntas((list) => [...list, emptyQuestion()])}
                   >
                     + Nova pergunta
                   </button>
-                </div>
+                </section>
               ) : null}
 
-              <button
-                type="submit"
-                className="ig-button sm:col-span-2 xl:col-span-1"
-                disabled={creating}
-              >
-                {creating
-                  ? editingMissionId
-                    ? 'Salvando...'
-                    : 'Criando...'
-                  : editingMissionId
-                    ? 'Salvar alterações'
-                    : 'Criar Missão'}
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <button type="submit" className="ig-button" disabled={creating}>
+                  {creating
+                    ? editingMissionId
+                      ? 'Salvando...'
+                      : 'Criando...'
+                    : editingMissionId
+                      ? 'Salvar alterações'
+                      : 'Criar missão'}
+                </button>
+                {editingMissionId ? (
+                  <button
+                    type="button"
+                    className="rounded-lg border border-zinc-300 bg-white px-4 py-2.5 text-sm font-medium text-zinc-700"
+                    onClick={resetMissionForm}
+                  >
+                    Cancelar
+                  </button>
+                ) : null}
+              </div>
             </form>
           ) : null}
 
           <div className="grid gap-3 md:grid-cols-2">
             {missions.map((mission) => (
-              <article key={mission.id} className="ig-card grid gap-3 p-4">
-                <div className="flex items-center justify-between gap-2">
-                  <h3 className="text-sm font-semibold text-zinc-900">{mission.titulo}</h3>
-                  <div className="flex flex-wrap items-center justify-end gap-1">
+              <article key={mission.id} className="ig-card flex flex-col gap-3 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="text-base font-semibold text-zinc-900">
+                      {mission.titulo}
+                    </h3>
+                    <p className="mt-1 line-clamp-2 text-sm text-zinc-600">
+                      {mission.descricao}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
                     <span className="rounded-full border border-zinc-200 bg-zinc-50 px-2 py-0.5 text-xs text-zinc-600">
                       {TIPO_LABEL[mission.tipo] || mission.tipo || 'Foto'}
                     </span>
@@ -854,7 +1117,6 @@ function MissionsPage() {
                     </span>
                   </div>
                 </div>
-                <p className="text-sm text-zinc-600">{mission.descricao}</p>
                 {mission.imagem_capa ? (
                   <QuestionMedia
                     midiaUrl={mission.imagem_capa}
@@ -867,6 +1129,7 @@ function MissionsPage() {
                     }
                   />
                 ) : null}
+                <div className="mt-auto grid gap-3 border-t border-zinc-100 pt-3">
                 <small className="text-xs text-zinc-500">
                   {mission.pontuacao} pts
                   {mission.tipo === 'QUIZ'
@@ -1000,6 +1263,7 @@ function MissionsPage() {
                     Pré-visualizar
                   </button>
                 ) : null}
+                </div>
               </article>
             ))}
           </div>
