@@ -2,6 +2,7 @@ const AppError = require('../utils/AppError');
 const competitionRepository = require('../repositories/competitionRepository');
 const quizRepository = require('../repositories/quizRepository');
 const socialRepository = require('../repositories/socialRepository');
+const userRepository = require('../repositories/userRepository');
 const {
   assertMissionWindow,
   getMissionWindowState,
@@ -455,7 +456,8 @@ async function getMissionQuiz(missaoId, user) {
 
 async function startMissionQuiz(missaoId, user) {
   await quizRepository.ensureQuizSchema();
-  if (!user?.equipe_id) {
+  const actor = await userRepository.findById(user?.id);
+  if (!actor?.equipe_id) {
     throw new AppError('Apenas participantes de equipe podem iniciar o quiz.', 403);
   }
   const mission = await competitionRepository.findMissionById(missaoId);
@@ -468,12 +470,12 @@ async function startMissionQuiz(missaoId, user) {
   }
   assertMissionWindow(mission);
 
-  const attempt = await quizRepository.findAttemptByUser(missaoId, user.id);
+  const attempt = await quizRepository.findAttemptByUser(missaoId, actor.id);
   if (attempt) {
     throw new AppError('Você já respondeu este quiz.', 409);
   }
 
-  const sessao = await quizRepository.startQuizSession(missaoId, user.id);
+  const sessao = await quizRepository.startQuizSession(missaoId, actor.id);
   const tempoLimite = Number(mission.quiz_tempo_segundos || 0) || null;
   let tempoRestanteSegundos = null;
   if (sessao?.iniciado_em && tempoLimite) {
@@ -493,7 +495,8 @@ async function startMissionQuiz(missaoId, user) {
 
 async function submitMissionQuiz({ missaoId, user, respostas }) {
   await quizRepository.ensureQuizSchema();
-  if (!user?.equipe_id) {
+  const actor = await userRepository.findById(user?.id);
+  if (!actor?.equipe_id) {
     throw new AppError('Você precisa estar em uma equipe para responder o quiz.', 400);
   }
 
@@ -510,8 +513,8 @@ async function submitMissionQuiz({ missaoId, user, respostas }) {
   try {
     const tentativa = await quizRepository.submitQuizAttempt({
       missao: mission,
-      usuarioId: user.id,
-      equipeId: user.equipe_id,
+      usuarioId: actor.id,
+      equipeId: actor.equipe_id,
       respostas,
     });
 
