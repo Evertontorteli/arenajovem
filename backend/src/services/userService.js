@@ -74,7 +74,10 @@ async function updateTeam(userId, equipeId) {
     throw new AppError('Equipe não encontrada.', 404);
   }
 
-  return userRepository.updateUserTeam(userId, parsedTeamId);
+  const user = await userRepository.updateUserTeam(userId, parsedTeamId);
+  const { invalidateCachedUser } = require('../utils/userSessionCache');
+  invalidateCachedUser(userId);
+  return user;
 }
 
 async function updateAccess(actorUserId, targetUserId, data) {

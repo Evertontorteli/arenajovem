@@ -456,7 +456,10 @@ async function getMissionQuiz(missaoId, user) {
 
 async function startMissionQuiz(missaoId, user) {
   await quizRepository.ensureQuizSchema();
-  const actor = await userRepository.findById(user?.id);
+  let actor = user;
+  if (!actor?.equipe_id && actor?.id) {
+    actor = await userRepository.findById(actor.id);
+  }
   if (!actor?.equipe_id) {
     throw new AppError('Apenas participantes de equipe podem iniciar o quiz.', 403);
   }
@@ -495,7 +498,10 @@ async function startMissionQuiz(missaoId, user) {
 
 async function submitMissionQuiz({ missaoId, user, respostas }) {
   await quizRepository.ensureQuizSchema();
-  const actor = await userRepository.findById(user?.id);
+  let actor = user;
+  if (!actor?.equipe_id && actor?.id) {
+    actor = await userRepository.findById(actor.id);
+  }
   if (!actor?.equipe_id) {
     throw new AppError('Você precisa estar em uma equipe para responder o quiz.', 400);
   }

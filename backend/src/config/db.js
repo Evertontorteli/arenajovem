@@ -7,22 +7,53 @@ dotenv.config({
   override: true,
 });
 
-const connectionString =
-  process.env.DATABASE_URL ||
-  process.env.POSTGRES_URL ||
-  process.env.POSTGRES_PRISMA_URL ||
-  null;
+/**
+ * Preferir URL com pooler do Neon em produção serverless.
+ * Ex.: ep-xxx-pooler.region.aws.neon.tech
+ */
+function resolveConnectionString() {
+  const candidates = [
+    process.env.DATABASE_URL,
+    process.env.POSTGRES_URL,
+    process.env.POSTGRES_PRISMA_URL,
+    process.env.DATABASE_URL_UNPOOLED,
+  ].filter(Boolean);
+
+  if (!candidates.length) return null;
+
+  const pooler = candidates.find((url) =>
+    /[-.]pooler\./i.test(String(url))
+  );
+  return pooler || candidates[0];
+}
+
+const connectionString = resolveConnectionString();
 
 const shouldUseSsl =
   process.env.DB_SSL === 'true' ||
   Boolean(connectionString) ||
   process.env.NODE_ENV === 'production';
 
+const isServerless =
+  Boolean(process.env.VERCEL) ||
+  Boolean(process.env.AWS_LAMBDA_FUNCTION_NAME) ||
+  process.env.SERVERLESS === 'true';
+
+/** Poucas conexões por instância — crítico no Vercel + Neon. */
+const poolMax = Math.max(
+  1,
+  Number(process.env.DB_POOL_MAX || (isServerless ? 4 : 10)) || 4
+);
+
 const pool = new Pool(
   connectionString
     ? {
         connectionString,
         ssl: shouldUseSsl ? { rejectUnauthorized: false } : false,
+        max: poolMax,
+        idleTimeoutMillis: isServerless ? 10_000 : 30_000,
+        connectionTimeoutMillis: 10_000,
+        allowExitOnIdle: isServerless,
       }
     : {
         host: process.env.DB_HOST || 'localhost',
@@ -31,6 +62,9 @@ const pool = new Pool(
         password: process.env.DB_PASSWORD || '',
         database: process.env.DB_NAME || 'arena_jovem',
         ssl: shouldUseSsl ? { rejectUnauthorized: false } : false,
+        max: poolMax,
+        idleTimeoutMillis: 30_000,
+        connectionTimeoutMillis: 10_000,
       }
 );
 
@@ -69,4 +103,6 @@ module.exports = {
   query,
   queryOn,
   withTransaction,
+  poolMax,
+  isServerless,
 };

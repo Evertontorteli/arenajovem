@@ -54,9 +54,14 @@ function TeamSelectionPage() {
     setSaving(true);
     setError('');
     try {
-      await http.patch('/users/me/team', { equipe_id: selectedTeamId });
+      const { data } = await http.patch('/users/me/team', {
+        equipe_id: selectedTeamId,
+      });
+      if (data?.token) {
+        localStorage.setItem('arena_token', data.token);
+      }
       await refreshUser();
-      navigate(getDefaultRoute(), { replace: true });
+      navigate(getPostLoginRoute(data) || getDefaultRoute(), { replace: true });
     } catch (_error) {
       setError('Não foi possível salvar o time agora. Tente novamente.');
     } finally {

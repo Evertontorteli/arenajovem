@@ -1,6 +1,8 @@
 const asyncHandler = require('../utils/asyncHandler');
 const userService = require('../services/userService');
+const authService = require('../services/authService');
 const { persistUpload } = require('../utils/persistUpload');
+const { invalidateCachedUser } = require('../utils/userSessionCache');
 
 const me = asyncHandler(async (req, res) => {
   const user = await userService.getMe(req.user.id);
@@ -14,6 +16,7 @@ const list = asyncHandler(async (_req, res) => {
 
 const updateProfile = asyncHandler(async (req, res) => {
   const user = await userService.updateProfile(req.user.id, req.body);
+  invalidateCachedUser(req.user.id);
   res.json(user);
 });
 
@@ -31,26 +34,34 @@ const uploadAvatar = asyncHandler(async (req, res) => {
   const user = await userService.updateProfile(req.user.id, {
     foto: fotoUrl,
   });
+  invalidateCachedUser(req.user.id);
   res.json(user);
 });
 
 const updateTeam = asyncHandler(async (req, res) => {
   const user = await userService.updateTeam(req.params.id, req.body.equipe_id);
+  invalidateCachedUser(req.params.id);
   res.json(user);
 });
 
 const updateMyTeam = asyncHandler(async (req, res) => {
   const user = await userService.updateTeam(req.user.id, req.body.equipe_id);
-  res.json(user);
+  const session = await authService.buildAuthResponse(user);
+  res.json({
+    ...session.user,
+    token: session.token,
+  });
 });
 
 const updateAccess = asyncHandler(async (req, res) => {
   const user = await userService.updateAccess(req.user.id, req.params.id, req.body);
+  invalidateCachedUser(req.params.id);
   res.json(user);
 });
 
 const deleteMyAccount = asyncHandler(async (req, res) => {
   const result = await userService.deleteMyAccount(req.user.id);
+  invalidateCachedUser(req.user.id);
   res.json(result);
 });
 

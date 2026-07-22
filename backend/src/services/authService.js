@@ -257,4 +257,5 @@ module.exports = {
   requestPasswordReset,
   verifyPasswordResetCode,
   resetPasswordWithCode,
+  buildAuthResponse,
 };
