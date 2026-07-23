@@ -16,9 +16,14 @@ function createPost(data, actor = {}) {
     throw new AppError('Você precisa estar em uma equipe para publicar.', 400);
   }
 
+  const wantsMissionSeal = data.tipo_publicacao === 'MISSAO_CONCLUIDA';
+  const tipoPublicacao = isAdmin && wantsMissionSeal ? 'MISSAO_CONCLUIDA' : 'LIVRE';
+
   return socialRepository.createPost({
     ...data,
     equipe_id: data.equipe_id || null,
+    tipo_publicacao: tipoPublicacao,
+    possui_selo_missao: tipoPublicacao === 'MISSAO_CONCLUIDA',
   });
 }
 

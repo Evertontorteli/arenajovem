@@ -175,7 +175,10 @@ function FeedPage() {
     const payload = new FormData();
     payload.append('imagem', file);
     payload.append('texto', text);
-    payload.append('tipo_publicacao', isMissionPost ? 'MISSAO_CONCLUIDA' : 'LIVRE');
+    payload.append(
+      'tipo_publicacao',
+      isAdmin && isMissionPost ? 'MISSAO_CONCLUIDA' : 'LIVRE'
+    );
     setPosting(true);
     setPostError('');
     try {
@@ -296,15 +299,17 @@ function FeedPage() {
                   onChange={(e) => setFile(e.target.files?.[0])}
                   required
                 />
-                <label className="flex items-center gap-2 text-sm text-zinc-500">
-                  <input
-                    className="h-4 w-4 rounded border-zinc-300"
-                    type="checkbox"
-                    checked={isMissionPost}
-                    onChange={(e) => setIsMissionPost(e.target.checked)}
-                  />
-                  Marcar como missão concluída
-                </label>
+                {isAdmin ? (
+                  <label className="flex items-center gap-2 text-sm text-zinc-500">
+                    <input
+                      className="h-4 w-4 rounded border-zinc-300"
+                      type="checkbox"
+                      checked={isMissionPost}
+                      onChange={(e) => setIsMissionPost(e.target.checked)}
+                    />
+                    Marcar como missão concluída
+                  </label>
+                ) : null}
                 <button type="submit" className="ig-button" disabled={posting}>
                   {posting ? 'Publicando...' : 'Publicar'}
                 </button>
