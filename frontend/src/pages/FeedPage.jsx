@@ -290,10 +290,10 @@ function FeedPage() {
                 value={text}
                 onChange={(e) => setText(e.target.value)}
               />
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="grid gap-2">
                 <input
                   ref={fileInputRef}
-                  className="ig-input w-full md:w-auto"
+                  className="ig-input w-full"
                   type="file"
                   accept="image/*"
                   onChange={(e) => setFile(e.target.files?.[0])}
@@ -310,7 +310,11 @@ function FeedPage() {
                     Marcar como missão concluída
                   </label>
                 ) : null}
-                <button type="submit" className="ig-button" disabled={posting}>
+                <button
+                  type="submit"
+                  className="ig-button w-full"
+                  disabled={posting}
+                >
                   {posting ? 'Publicando...' : 'Publicar'}
                 </button>
               </div>
