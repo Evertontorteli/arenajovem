@@ -41,10 +41,21 @@ const unlikePost = asyncHandler(async (req, res) => {
   res.status(204).send();
 });
 
+const likeComment = asyncHandler(async (req, res) => {
+  await socialService.likeComment(req.params.id, req.user.id);
+  res.status(204).send();
+});
+
+const unlikeComment = asyncHandler(async (req, res) => {
+  await socialService.unlikeComment(req.params.id, req.user.id);
+  res.status(204).send();
+});
+
 const listComments = asyncHandler(async (req, res) => {
   const comments = await socialService.listComments(req.params.id, {
     limit: req.query.limit,
     offset: req.query.offset,
+    userId: req.user.id,
   });
   res.json(comments);
 });
@@ -129,6 +140,8 @@ module.exports = {
   deletePost,
   likePost,
   unlikePost,
+  likeComment,
+  unlikeComment,
   listComments,
   createComment,
   updateComment,

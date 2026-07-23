@@ -55,6 +55,22 @@ function unlikePost(postId, userId) {
   return socialRepository.toggleLike(postId, userId, false);
 }
 
+async function likeComment(commentId, userId) {
+  const comment = await socialRepository.findCommentById(commentId);
+  if (!comment) {
+    throw new AppError('Comentário não encontrado.', 404);
+  }
+  return socialRepository.toggleCommentLike(commentId, userId, true);
+}
+
+async function unlikeComment(commentId, userId) {
+  const comment = await socialRepository.findCommentById(commentId);
+  if (!comment) {
+    throw new AppError('Comentário não encontrado.', 404);
+  }
+  return socialRepository.toggleCommentLike(commentId, userId, false);
+}
+
 function listComments(postId, pagination) {
   return socialRepository.listComments(postId, pagination);
 }
@@ -186,6 +202,8 @@ module.exports = {
   deletePost,
   likePost,
   unlikePost,
+  likeComment,
+  unlikeComment,
   listComments,
   createComment,
   updateComment,

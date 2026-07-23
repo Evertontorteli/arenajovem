@@ -21,6 +21,8 @@ router.get('/posts/:id/comments', socialController.listComments);
 router.post('/posts/:id/comments', socialController.createComment);
 router.put('/comments/:id', socialController.updateComment);
 router.delete('/comments/:id', socialController.deleteComment);
+router.post('/comments/:id/like', socialController.likeComment);
+router.delete('/comments/:id/like', socialController.unlikeComment);
 
 router.get('/news', socialController.listNews);
 router.post('/news', requireRole('ADMIN'), upload.single('imagem'), socialController.createNews);

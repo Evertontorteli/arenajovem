@@ -245,9 +245,41 @@ async function toggleLike(postId, userId, like) {
   }
 }
 
-async function listComments(postId, { limit = 30, offset = 0 } = {}) {
+async function toggleCommentLike(commentId, userId, like) {
+  await ensureFeedIndexes();
+  if (like) {
+    await query(
+      `INSERT INTO curtidas_comentarios (comentario_id, usuario_id) VALUES (?, ?)
+       ON CONFLICT (comentario_id, usuario_id) DO NOTHING`,
+      [commentId, userId]
+    );
+  } else {
+    await query(
+      'DELETE FROM curtidas_comentarios WHERE comentario_id = ? AND usuario_id = ?',
+      [commentId, userId]
+    );
+  }
+}
+
+function commentLikeSelect(userId) {
+  const viewerId = Number(userId);
+  const hasViewer = Number.isInteger(viewerId) && viewerId > 0;
+  const likedByMe = hasViewer
+    ? `(EXISTS (
+         SELECT 1 FROM curtidas_comentarios cc
+         WHERE cc.comentario_id = c.id AND cc.usuario_id = ${viewerId}
+       )) AS curtida_por_mim`
+    : 'FALSE AS curtida_por_mim';
+
+  return `(SELECT COUNT(*)::int FROM curtidas_comentarios cc WHERE cc.comentario_id = c.id) AS curtidas,
+      ${likedByMe}`;
+}
+
+async function listComments(postId, { limit = 30, offset = 0, userId = null } = {}) {
+  await ensureFeedIndexes();
   const safeLimit = Math.min(30, Math.max(1, Number(limit) || 30));
   const safeOffset = Math.max(0, Number(offset) || 0);
+  const likeFields = commentLikeSelect(userId);
 
   const [countRow] = await query(
     `SELECT COUNT(*)::int AS total
@@ -258,7 +290,8 @@ async function listComments(postId, { limit = 30, offset = 0 } = {}) {
   const total = Number(countRow?.total || 0);
 
   const roots = await query(
-    `SELECT c.*, u.nome AS autor_nome
+    `SELECT c.*, u.nome AS autor_nome,
+      ${likeFields}
      FROM comentarios c
      INNER JOIN usuarios u ON u.id = c.usuario_id
      WHERE c.publicacao_id = ? AND c.parent_id IS NULL
@@ -281,7 +314,8 @@ async function listComments(postId, { limit = 30, offset = 0 } = {}) {
 
   const rootIds = roots.map((row) => row.id);
   const replies = await query(
-    `SELECT c.*, u.nome AS autor_nome
+    `SELECT c.*, u.nome AS autor_nome,
+      ${likeFields}
      FROM comentarios c
      INNER JOIN usuarios u ON u.id = c.usuario_id
      WHERE c.parent_id IN (${rootIds.map(() => '?').join(',')})
@@ -325,7 +359,9 @@ async function createComment(data) {
     ]
   );
   const rows = await query(
-    `SELECT c.*, u.nome AS autor_nome
+    `SELECT c.*, u.nome AS autor_nome,
+      0 AS curtidas,
+      FALSE AS curtida_por_mim
      FROM comentarios c
      INNER JOIN usuarios u ON u.id = c.usuario_id
      WHERE c.id = ?`,
@@ -443,6 +479,7 @@ module.exports = {
   findPostByMissionId,
   deletePost,
   toggleLike,
+  toggleCommentLike,
   listComments,
   createComment,
   findCommentById,

@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   FaHeart,
   FaRegHeart,
   FaRegComment,
+  FaRegSmile,
   FaTrashAlt,
 } from 'react-icons/fa';
 import http from '../api/http';
@@ -13,6 +14,59 @@ import AdminSeal from './AdminSeal';
 import UserAvatar from './UserAvatar';
 
 const COMMENTS_PAGE_SIZE = 30;
+const COMMENT_MAX_LENGTH = 300;
+const COMMENT_EMOJIS = [
+  '😀',
+  '😁',
+  '😂',
+  '🤣',
+  '😊',
+  '😍',
+  '🥰',
+  '😘',
+  '😎',
+  '🤩',
+  '😇',
+  '🤗',
+  '🤔',
+  '😅',
+  '😢',
+  '😭',
+  '😤',
+  '😡',
+  '🤯',
+  '😴',
+  '👍',
+  '👎',
+  '👏',
+  '🙌',
+  '🙏',
+  '💪',
+  '🔥',
+  '✨',
+  '⭐',
+  '💯',
+  '❤️',
+  '🧡',
+  '💛',
+  '💚',
+  '💙',
+  '💜',
+  '🖤',
+  '🤍',
+  '💔',
+  '🎉',
+  '🎊',
+  '🏆',
+  '⚽',
+  '🏀',
+  '🎯',
+  '🚀',
+  '🌈',
+  '☀️',
+  '🌙',
+  '⚡',
+];
 
 function truncateName(name, max = 20) {
   const value = String(name || '');
@@ -33,6 +87,7 @@ function FeedCard({ post, onRefresh }) {
   });
   const [isCommentsOpen, setIsCommentsOpen] = useState(false);
   const [commentText, setCommentText] = useState('');
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [replyTo, setReplyTo] = useState(null);
   const [editingComment, setEditingComment] = useState(null);
   const [isLikeAnimating, setIsLikeAnimating] = useState(false);
@@ -45,6 +100,8 @@ function FeedCard({ post, onRefresh }) {
   const [alreadyCreditedArrival, setAlreadyCreditedArrival] = useState(
     Boolean(post.usuario_ja_pontuou_chegada)
   );
+  const commentInputRef = useRef(null);
+  const emojiPickerRef = useRef(null);
 
   const isWelcomePost = Boolean(post.eh_boas_vindas || post.missao_chegada);
   const isAdminUser = user?.role === 'ADMIN';
@@ -100,17 +157,29 @@ function FeedCard({ post, onRefresh }) {
     if (!isCommentsOpen) return undefined;
     const onKeyDown = (event) => {
       if (event.key === 'Escape') {
+        if (isEmojiPickerOpen) {
+          setIsEmojiPickerOpen(false);
+          return;
+        }
         setIsCommentsOpen(false);
       }
+    };
+    const onPointerDown = (event) => {
+      if (!isEmojiPickerOpen) return;
+      const target = event.target;
+      if (emojiPickerRef.current?.contains(target)) return;
+      setIsEmojiPickerOpen(false);
     };
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     window.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', onPointerDown);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', onPointerDown);
     };
-  }, [isCommentsOpen]);
+  }, [isCommentsOpen, isEmojiPickerOpen]);
 
   const toggleLike = async () => {
     const alreadyLiked = Boolean(post.curtida_por_mim);
@@ -170,6 +239,7 @@ function FeedCard({ post, onRefresh }) {
     setReplyTo(null);
     setEditingComment(null);
     setCommentText('');
+    setIsEmojiPickerOpen(false);
     await loadComments({ offset: 0, append: false });
   };
 
@@ -178,7 +248,26 @@ function FeedCard({ post, onRefresh }) {
     setReplyTo(null);
     setEditingComment(null);
     setCommentText('');
+    setIsEmojiPickerOpen(false);
     setActionError('');
+  };
+
+  const insertEmoji = (emoji) => {
+    const input = commentInputRef.current;
+    const current = commentText;
+    const start = input?.selectionStart ?? current.length;
+    const end = input?.selectionEnd ?? current.length;
+    const next = `${current.slice(0, start)}${emoji}${current.slice(end)}`.slice(
+      0,
+      COMMENT_MAX_LENGTH
+    );
+    const caret = Math.min(start + emoji.length, COMMENT_MAX_LENGTH);
+    setCommentText(next);
+    requestAnimationFrame(() => {
+      if (!commentInputRef.current) return;
+      commentInputRef.current.focus();
+      commentInputRef.current.setSelectionRange(caret, caret);
+    });
   };
 
   const canManageComment = (comment) =>
@@ -189,18 +278,21 @@ function FeedCard({ post, onRefresh }) {
     setEditingComment(null);
     setReplyTo(comment);
     setCommentText('');
+    setIsEmojiPickerOpen(false);
   };
 
   const startEdit = (comment) => {
     setReplyTo(null);
     setEditingComment(comment);
     setCommentText(comment.texto || '');
+    setIsEmojiPickerOpen(false);
   };
 
   const cancelComposerAction = () => {
     setReplyTo(null);
     setEditingComment(null);
     setCommentText('');
+    setIsEmojiPickerOpen(false);
   };
 
   const sendComment = async (event) => {
@@ -228,6 +320,7 @@ function FeedCard({ post, onRefresh }) {
       setCommentText('');
       setReplyTo(null);
       setEditingComment(null);
+      setIsEmojiPickerOpen(false);
       await loadComments({ offset: 0, append: false });
       await loadPreviewComments();
       onRefresh();
@@ -250,6 +343,56 @@ function FeedCard({ post, onRefresh }) {
     } catch (error) {
       setActionError(
         error?.response?.data?.message || 'Não foi possível excluir o comentário.'
+      );
+    }
+  };
+
+  const patchCommentLikeState = (list, commentId, liked) =>
+    list.map((item) => {
+      if (Number(item.id) === Number(commentId)) {
+        const current = Number(item.curtidas || 0);
+        return {
+          ...item,
+          curtida_por_mim: liked,
+          curtidas: Math.max(0, current + (liked ? 1 : -1)),
+        };
+      }
+      if (Array.isArray(item.respostas) && item.respostas.length > 0) {
+        return {
+          ...item,
+          respostas: patchCommentLikeState(item.respostas, commentId, liked),
+        };
+      }
+      return item;
+    });
+
+  const toggleCommentLike = async (comment) => {
+    const alreadyLiked = Boolean(comment.curtida_por_mim);
+    const nextLiked = !alreadyLiked;
+    setComments((previous) =>
+      patchCommentLikeState(previous, comment.id, nextLiked)
+    );
+    setPreviewComments((previous) =>
+      patchCommentLikeState(previous, comment.id, nextLiked)
+    );
+    try {
+      if (alreadyLiked) {
+        await http.delete(`/social/comments/${comment.id}/like`);
+      } else {
+        await http.post(`/social/comments/${comment.id}/like`);
+      }
+    } catch (error) {
+      setComments((previous) =>
+        patchCommentLikeState(previous, comment.id, alreadyLiked)
+      );
+      setPreviewComments((previous) =>
+        patchCommentLikeState(previous, comment.id, alreadyLiked)
+      );
+      setActionError(
+        error?.response?.data?.message ||
+          (alreadyLiked
+            ? 'Não foi possível remover a curtida do comentário.'
+            : 'Não foi possível curtir o comentário.')
       );
     }
   };
@@ -316,13 +459,31 @@ function FeedCard({ post, onRefresh }) {
 
   const renderCommentItem = (comment, isReply = false) => (
     <div key={comment.id} className={isReply ? 'ml-5 border-l border-zinc-200 pl-3' : ''}>
-      <p className="text-sm text-zinc-800">
-        <strong title={comment.autor_nome}>{truncateName(comment.autor_nome)}</strong>{' '}
-        {comment.texto}
-        {comment.atualizado_em ? (
-          <span className="ml-1 text-xs font-normal text-zinc-400">(editado)</span>
-        ) : null}
-      </p>
+      <strong className="block text-sm text-zinc-900" title={comment.autor_nome}>
+        {truncateName(comment.autor_nome)}
+      </strong>
+      <div className="mt-0.5 flex items-start gap-2">
+        <p className="min-w-0 flex-1 text-sm text-zinc-800">
+          {comment.texto}
+          {comment.atualizado_em ? (
+            <span className="ml-1 text-xs font-normal text-zinc-400">(editado)</span>
+          ) : null}
+        </p>
+        <button
+          type="button"
+          className={`mt-0.5 inline-flex shrink-0 items-center gap-1 bg-transparent p-0 text-xs ${
+            comment.curtida_por_mim ? 'text-rose-500' : 'text-zinc-500 hover:text-zinc-800'
+          }`}
+          onClick={() => toggleCommentLike(comment)}
+          aria-label={comment.curtida_por_mim ? 'Descurtir comentário' : 'Curtir comentário'}
+          title={comment.curtida_por_mim ? 'Descurtir' : 'Curtir'}
+        >
+          {comment.curtida_por_mim ? <FaHeart /> : <FaRegHeart />}
+          {Number(comment.curtidas || 0) > 0 ? (
+            <span>{comment.curtidas}</span>
+          ) : null}
+        </button>
+      </div>
       {renderCommentActions(comment)}
       {!isReply && Array.isArray(comment.respostas) && comment.respostas.length > 0 ? (
         <div className="mt-2 grid gap-2">
@@ -632,8 +793,40 @@ function FeedCard({ post, onRefresh }) {
               {actionSuccess ? (
                 <p className="text-sm text-emerald-600">{actionSuccess}</p>
               ) : null}
-              <div className="flex items-center gap-2">
+              <div className="relative flex items-center gap-2">
+                <div className="relative shrink-0" ref={emojiPickerRef}>
+                  <button
+                    type="button"
+                    className={`bg-transparent p-0 text-xl leading-none ${
+                      isEmojiPickerOpen ? 'text-zinc-900' : 'text-zinc-500 hover:text-zinc-800'
+                    }`}
+                    onClick={() => setIsEmojiPickerOpen((open) => !open)}
+                    aria-label="Abrir emojis"
+                    aria-expanded={isEmojiPickerOpen}
+                    title="Emojis"
+                  >
+                    <FaRegSmile />
+                  </button>
+                  {isEmojiPickerOpen ? (
+                    <div className="absolute bottom-[calc(100%+0.5rem)] left-0 z-10 w-[min(18rem,calc(100vw-2.5rem))] rounded-xl border border-zinc-200 bg-white p-2 shadow-xl">
+                      <div className="grid max-h-40 grid-cols-8 gap-1 overflow-y-auto">
+                        {COMMENT_EMOJIS.map((emoji) => (
+                          <button
+                            key={emoji}
+                            type="button"
+                            className="rounded-md bg-transparent p-1 text-lg leading-none hover:bg-zinc-100"
+                            onClick={() => insertEmoji(emoji)}
+                            aria-label={`Inserir emoji ${emoji}`}
+                          >
+                            {emoji}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
                 <input
+                  ref={commentInputRef}
                   className="ig-input border-zinc-200 bg-zinc-50"
                   value={commentText}
                   onChange={(event) => setCommentText(event.target.value)}
@@ -647,7 +840,7 @@ function FeedCard({ post, onRefresh }) {
                           ? 'Escreva seu comentário de chegada...'
                           : 'Adicione um comentário...'
                   }
-                  maxLength={300}
+                  maxLength={COMMENT_MAX_LENGTH}
                 />
                 <button
                   type="submit"
